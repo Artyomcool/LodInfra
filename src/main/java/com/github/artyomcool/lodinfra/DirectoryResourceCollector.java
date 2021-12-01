@@ -32,7 +32,7 @@ public class DirectoryResourceCollector {
         }
     }
 
-    public static void collectResources(Path dir, Path outputRoot, Path afterLangPath, boolean dry) throws IOException, InvalidFormatException, DataFormatException {
+    public static void collectResources(Path dir, String pathPattern, boolean dry) throws IOException, InvalidFormatException, DataFormatException {
 
         Map<String, List<Path>> xlsFilesByLodName = new HashMap<>();
         Map<String, List<Path>> resourcesByLangLodName = new HashMap<>();
@@ -76,16 +76,12 @@ public class DirectoryResourceCollector {
         Map<Path, LodResources> lodToResource = new LinkedHashMap<>();
 
         for (Map.Entry<String, List<Path>> entry : xlsFilesByLodName.entrySet()) {
-            String lodName = entry.getKey() + ".lod";
+            String lodName = entry.getKey();
             for (Path xlsPath : entry.getValue()) {
                 try (XSSFWorkbook sheets = new XSSFWorkbook(xlsPath.toFile())) {
                     List<Resource> resources = extractResources(xlsPath, sheets);
                     for (Resource resource : resources) {
-                        Path lodPath = outputRoot
-                                .resolve(resource.lang)
-                                .resolve(afterLangPath)
-                                .resolve(lodName);
-
+                        Path lodPath = Utils.resolveTemplate(pathPattern, resource.lang, lodName);
                         lodToResource.computeIfAbsent(lodPath, k -> new LodResources()).addResource(resource);
                     }
                 }
@@ -95,11 +91,9 @@ public class DirectoryResourceCollector {
         for (Map.Entry<String, List<Path>> entry : resourcesByLangLodName.entrySet()) {
             String[] parts = entry.getKey().split("@", 2);
             String lang = parts[0];
-            String lodName = parts[1] + ".lod";
-            Path lodPath = outputRoot
-                    .resolve(lang)
-                    .resolve(afterLangPath)
-                    .resolve(lodName);
+            String lodName = parts[1];
+
+            Path lodPath = Utils.resolveTemplate(pathPattern, lang, lodName);
 
             LodResources resources = lodToResource.computeIfAbsent(lodPath, k -> new LodResources());
             for (Path path : entry.getValue()) {
