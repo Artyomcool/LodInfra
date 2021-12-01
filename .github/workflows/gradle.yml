@@ -13,7 +13,7 @@ jobs:
       upload_url: ${{ steps.create-release.outputs.upload_url }}
     steps:
       - uses: "marvinpinto/action-automatic-releases@latest"
-        name: create-release
+        id: create-release
         with:
           repo_token: "${{ secrets.GITHUB_TOKEN }}"
           automatic_release_tag: "latest"
