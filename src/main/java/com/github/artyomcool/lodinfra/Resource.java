@@ -5,6 +5,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.zip.Deflater;
@@ -28,19 +29,16 @@ public class Resource {
     }
 
     public static Resource fromPath(String lang, Path path) throws IOException {
-        try (FileChannel channel = FileChannel.open(path, StandardOpenOption.READ)) {
-            long fileSize = channel.size();
-            MappedByteBuffer buffer = channel.map(FileChannel.MapMode.READ_ONLY, 0, fileSize);
-            String name = path.getFileName().toString();
-            return new Resource(
-                    typeOf(name, buffer),
-                    lang,
-                    name,
-                    path.toString(),
-                    buffer,
-                    0
-            );
-        }
+        ByteBuffer buffer = ByteBuffer.wrap(Files.readAllBytes(path));
+        String name = path.getFileName().toString();
+        return new Resource(
+                typeOf(name, buffer),
+                lang,
+                name,
+                path.toString(),
+                buffer,
+                0
+        );
     }
 
     public static Resource fromString(Path holderPath, String lang, String name, String data) {
