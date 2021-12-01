@@ -1,0 +1,51 @@
+
+plugins {
+    id 'java'
+    id 'com.palantir.graal' version '0.10.0'
+}
+
+group 'com.github.artyomcool'
+version '1.0-SNAPSHOT'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(11)
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+graal {
+    graalVersion '21.3.0'
+    outputName 'pack'
+    mainClass 'com.github.artyomcool.lodinfra.Pack'
+    javaVersion '11'
+    option '--no-fallback'
+    //option '--allow-incomplete-classpath'
+    option '-H:+AddAllCharsets'
+    option '--features=com.github.artyomcool.lodinfra.NativeImage'
+    option '-H:IncludeResourceBundles=org.apache.xmlbeans.impl.regex.message'
+    option '-H:IncludeResources=(org/apache/poi/schemas/.*)|(schemaorg_apache_xmlbeans/.*)'
+    option '-H:+ReportExceptionStackTraces'
+}
+
+dependencies {
+    implementation ('org.apache.poi:poi:4.1.2') {
+        exclude group: 'org.apache.logging.log4j'
+    }
+    implementation ('org.apache.poi:poi-ooxml:4.1.2') {
+        exclude group: 'org.apache.logging.log4j'
+    }
+    implementation 'org.apache.commons:commons-text:1.9'
+
+    implementation 'org.graalvm.sdk:graal-sdk:21.3.0'
+
+    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.8.1'
+    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.8.1'
+}
+
+test {
+    useJUnitPlatform()
+}
