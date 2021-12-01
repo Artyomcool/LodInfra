@@ -65,7 +65,7 @@ jobs:
       with:
         upload_url: ${{ needs.create-release.outputs.upload_url }}  
         asset_path: ./build/graal/pack
-        asset_name: pack
+        asset_name: pack_mac
         asset_content_type: application/octet-stream
   perform-release-windows:
     runs-on: windows-latest
@@ -86,6 +86,6 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ needs.create-release.outputs.upload_url }}  
-        asset_path: ./build/graal/pack
+        asset_path: ./build/graal/pack.exe
         asset_name: pack.exe
         asset_content_type: application/octet-stream
