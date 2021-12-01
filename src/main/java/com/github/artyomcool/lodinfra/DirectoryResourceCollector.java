@@ -243,6 +243,7 @@ public class DirectoryResourceCollector {
                 logsByLod.put(lodPath, logs);
 
                 if (!dry) {
+                    Files.createDirectories(lodPath.getParent());
                     ByteBuffer newLod = lodFilePatch.serialize();
                     try (FileChannel channel = FileChannel.open(
                             lodPath,
