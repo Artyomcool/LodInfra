@@ -1,19 +1,17 @@
 package com.github.artyomcool.lodinfra;
 
 import org.apache.poi.openxml4j.exceptions.InvalidFormatException;
-import org.apache.poi.ss.usermodel.Cell;
-import org.apache.poi.ss.usermodel.CellType;
-import org.apache.poi.ss.usermodel.Row;
-import org.apache.poi.ss.usermodel.Sheet;
-import org.apache.poi.xssf.usermodel.XSSFCell;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.nio.file.attribute.FileTime;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -32,16 +30,43 @@ public class DirectoryResourceCollector {
         }
     }
 
-    public static void collectResources(Path dir, String pathPattern, boolean dry) throws IOException, InvalidFormatException, DataFormatException {
+    // TODO move config into constructor
+    public static void collectResources(
+            Path dir,
+            String pathPattern,
+            boolean dry,
+            boolean logDetailedDiff,
+            boolean checkTimestamps,
+            int compressionLevel,
+            String[] ignoreLangs
+    ) throws IOException, DataFormatException {
+        Instant ignoreBeforeTimestamp = Instant.MIN;
+        Instant now = Instant.now();
+        if (checkTimestamps) {
+            try {
+                ignoreBeforeTimestamp = Instant.parse(Files.readString(dir.resolve("lastTs")));
+            } catch (Exception ignored) {
+                System.out.println("No previous timestamp saved");
+            }
+        }
 
         Map<String, List<Path>> xlsFilesByLodName = new HashMap<>();
         Map<String, List<Path>> resourcesByLangLodName = new HashMap<>();
+        Set<String> ignoreLangsSet = new HashSet<>();
+        for (String ignoreLang : ignoreLangs) {
+            ignoreLangsSet.add(ignoreLang.toLowerCase());
+        }
 
         List<Path> files = Files.list(dir).collect(Collectors.toList());
         for (Path path : files) {
             String name = path.getFileName().toString();
             if (Files.isDirectory(path)) {
                 if (!name.contains("@")) {
+                    continue;
+                }
+
+                String lang = name.substring(0, name.indexOf("@"));
+                if (ignoreLangsSet.contains(lang.toLowerCase())) {
                     continue;
                 }
 
@@ -75,14 +100,28 @@ public class DirectoryResourceCollector {
 
         Map<Path, LodResources> lodToResource = new LinkedHashMap<>();
 
+        int ignored = 0;
+        int changed = 0;
+
         for (Map.Entry<String, List<Path>> entry : xlsFilesByLodName.entrySet()) {
             String lodName = entry.getKey();
             for (Path xlsPath : entry.getValue()) {
-                try (XSSFWorkbook sheets = new XSSFWorkbook(xlsPath.toFile())) {
-                    List<Resource> resources = extractResources(xlsPath, sheets);
+
+                FileTime lastModifiedTime = Files.getLastModifiedTime(xlsPath);
+                if (lastModifiedTime.toInstant().isBefore(ignoreBeforeTimestamp)) {
+                    System.out.println("Xls " + xlsPath + " is modified at " + lastModifiedTime + ", ignoring (now is " +now + ")");
+                    continue;
+                }
+
+                try (
+                        InputStream stream = Files.newInputStream(xlsPath);
+                        XSSFWorkbook sheets = new XSSFWorkbook(stream)
+                ) {
+                    List<Resource> resources = XlsTextExtractor.extractResources(xlsPath, sheets);
                     for (Resource resource : resources) {
                         Path lodPath = Utils.resolveTemplate(pathPattern, resource.lang, lodName);
                         lodToResource.computeIfAbsent(lodPath, k -> new LodResources()).addResource(resource);
+                        changed++;
                     }
                 }
             }
@@ -97,150 +136,57 @@ public class DirectoryResourceCollector {
 
             LodResources resources = lodToResource.computeIfAbsent(lodPath, k -> new LodResources());
             for (Path path : entry.getValue()) {
+                FileTime lastModifiedTime = Files.getLastModifiedTime(path);
+                if (lastModifiedTime.toInstant().isBefore(ignoreBeforeTimestamp)) {
+                    ignored++;
+                    continue;
+                }
+
                 Resource resource = Resource.fromPath(lang, path);
                 resources.addResource(resource);
+                changed++;
             }
         }
 
-        Map<Path, String> logsByLod = writeLods(dry, lodToResource);
-
-        writeLog(dir, logsByLod);
-    }
-
-    private static List<Resource> extractResources(Path path, XSSFWorkbook sheets) {
-        List<Resource> resources = new ArrayList<>();
-        sheets.sheetIterator().forEachRemaining(sheet -> {
-            Row firstRow = sheet.getRow(0);
-            if (firstRow == null
-                    || firstRow.getCell(0) == null
-                    || firstRow.getCell(0).toString().isBlank()) {
-                return;
-            }
-
-            String name = sheet.getSheetName();
-            int lastRowNum = getLastRowNum(sheet);
-
-            Set<Integer> filterBlank = new HashSet<>();
-
-            Map<String, StringBuilder> allLangs = new HashMap<>();
-            List<Collection<StringBuilder>> textsByCellIndex = new ArrayList<>();
-
-            for (int cellIndex = 0; cellIndex < firstRow.getLastCellNum(); cellIndex++) {
-                Cell cell = firstRow.getCell(cellIndex);
-                if (cell == null || cell.getCellType() != CellType.STRING || cell.getStringCellValue().isBlank()) {
-                    break;
-                }
-
-                String lang = cell.toString();
-                String[] langParts = lang.split(":");
-                lang = langParts[0];
-                if (langParts.length > 1 && langParts[1].equals("not_blank")) {
-                    filterBlank.add(cellIndex);
-                }
-
-                if (lang.equals("common")) {
-                    textsByCellIndex.add(allLangs.values());
-                } else {
-                    StringBuilder text = allLangs.computeIfAbsent(lang, k -> new StringBuilder());
-                    textsByCellIndex.add(Collections.singletonList(text));
-                }
-            }
-
-
-            for (int rowIndex = 1; rowIndex <= lastRowNum; rowIndex++) {
-                Row row = sheet.getRow(rowIndex);
-
-                Set<StringBuilder> firstCellVisited = Collections.newSetFromMap(new IdentityHashMap<>());
-
-                for (int cellIndex = 0; cellIndex < textsByCellIndex.size(); cellIndex++) {
-                    Cell cell = row == null ? null : row.getCell(cellIndex);
-                    if (filterBlank.contains(cellIndex)) {
-                        if (cell == null || cell.toString().isBlank()) {
-                            continue;
-                        }
-                    }
-                    for (StringBuilder text : textsByCellIndex.get(cellIndex)) {
-                        if (!firstCellVisited.add(text)) {
-                            text.append('\t');
-                        }
-                        if (cell == null) {
-                            continue;
-                        }
-
-                        String cellText = getCellText(cell);
-
-                        text.append(cellText);
-                    }
-                }
-
-                for (StringBuilder text : allLangs.values()) {
-                    text.append("\r\n");
-                }
-            }
-
-            allLangs.forEach((k, v) -> resources.add(
-                    Resource.fromString(
-                            path,
-                            k,
-                            name,
-                            v.toString()
-                    )
-            ));
-        });
-
-        return resources;
-    }
-
-    public static String getCellText(Cell cell) {
-        if (cell.getCellType() == CellType.NUMERIC) {
-            return ((XSSFCell) cell).getRawValue();
+        if (ignored > 0) {
+            System.out.println("Ignored " + ignored + " files, changed " + changed);
         }
-        String text = cell.toString()
-                .replaceAll("\"", "\"\"")
-                .replaceAll("\r\n", "\n");
 
-        return text.contains("\n")
-                ? "\"" + text + "\""
-                : text;
-    }
+        Map<Path, String> logsByLod = writeLods(lodToResource, dry, logDetailedDiff, checkTimestamps, compressionLevel);
+        System.out.println("Lods written");
 
-    private static int getLastRowNum(Sheet sheet) {
-        for (int lastRowNum = sheet.getLastRowNum(); lastRowNum > 0; lastRowNum--) {
-            Row row = sheet.getRow(lastRowNum);
-            if (row == null) {
-                continue;
-            }
-            Cell cell = row.getCell(0);
-            if (cell != null && cell.getCellType() == CellType.STRING && cell.getStringCellValue().startsWith("###")) {
-                return lastRowNum - 1;
-            }
-            Iterator<Cell> cellIterator = row.cellIterator();
-            while (cellIterator.hasNext()) {
-                Cell next = cellIterator.next();
-                if (next != null) {
-                    if (!next.toString().isBlank()) {
-                        return lastRowNum;
-                    }
-                }
-            }
+        if (logDetailedDiff) {
+            writeLog(dir, logsByLod);
         }
-        return 0;
+
+        if (checkTimestamps) {
+            Files.writeString(dir.resolve("lastTs"), now.toString());
+        }
     }
 
-    private static Map<Path, String> writeLods(boolean dry, Map<Path, LodResources> lodToResource) throws IOException, DataFormatException {
+    private static Map<Path, String> writeLods(Map<Path, LodResources> lodToResource, boolean dry, boolean logDetailedDiff, boolean preserveData, int compressionLevel) throws IOException, DataFormatException {
         Map<Path, String> logsByLod = new LinkedHashMap<>();
 
         for (Map.Entry<Path, LodResources> entry : lodToResource.entrySet()) {
             Path lodPath = entry.getKey();
-            try (LodFilePatch lodFilePatch = LodFilePatch.fromPath(lodPath)) {
-                lodFilePatch.removeAllFromOriginal();
+            if (entry.getValue().resourcesByName.isEmpty()) {
+                continue;
+            }
+
+            System.out.println("Packing " + lodPath);
+            try (LodFilePatch lodFilePatch = LodFilePatch.fromPath(lodPath, compressionLevel)) {
+                if (!preserveData) {
+                    lodFilePatch.removeAllFromOriginal();
+                }
 
                 for (Resource resource : entry.getValue().resourcesByName.values()) {
                     lodFilePatch.addPatch(resource);
                 }
 
-                String logs = lodFilePatch.calculateDiff();
-                logsByLod.put(lodPath, logs);
+                if (logDetailedDiff) {
+                    String logs = lodFilePatch.calculateDiff();
+                    logsByLod.put(lodPath, logs);
+                }
 
                 if (!dry) {
                     Files.createDirectories(lodPath.getParent());

@@ -26,15 +26,16 @@ public class LodFilePatch implements Closeable {
     private final Map<String, Resource> patchesByName = new HashMap<>();
 
     private final Inflater inflater = new Inflater();
-    private final Deflater deflater = new Deflater(Deflater.BEST_COMPRESSION);
+    private final Deflater deflater;
 
-    public static LodFilePatch fromPath(Path path) throws IOException {
-        return new LodFilePatch(path, LodFile.loadOrCreate(path));
+    public static LodFilePatch fromPath(Path path, int compressionLevel) throws IOException {
+        return new LodFilePatch(path, LodFile.loadOrCreate(path), compressionLevel);
     }
 
-    private LodFilePatch(Path lodPath, LodFile file) {
+    private LodFilePatch(Path lodPath, LodFile file, int compressionLevel) {
         this.lodPath = lodPath;
         this.file = file;
+        this.deflater = new Deflater(compressionLevel);
         for (LodFile.SubFileMeta subFile : file.subFiles) {
             String name = sanitizeName(subFile.name);
             originalSubFilesByName.put(name, subFile);
