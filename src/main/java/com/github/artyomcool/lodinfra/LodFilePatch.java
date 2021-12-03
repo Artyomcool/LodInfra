@@ -1,9 +1,5 @@
 package com.github.artyomcool.lodinfra;
 
-import org.apache.commons.text.diff.EditScript;
-import org.apache.commons.text.diff.ReplacementsFinder;
-import org.apache.commons.text.diff.StringsComparator;
-
 import java.io.Closeable;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -150,43 +146,18 @@ public class LodFilePatch implements Closeable {
                     continue;
                 }
 
-                diff.append(String.format("\t| Replace #%4d: ", i));
-
-                int[] leftPos = {0};
-                StringsComparator comparator = new StringsComparator(oldString + "\0", newString + "\0");
-                EditScript<Character> script = comparator.getScript();
-                script.visit(new ReplacementsFinder<>((skipped, from, to) -> {
-                    int endLeftPos = leftPos[0] + skipped;
-                    for (; leftPos[0] < endLeftPos; leftPos[0]++) {
-                        char c1 = oldString.charAt(leftPos[0]);
-                        append(diff, c1);
-                    }
-                    leftPos[0] += from.size();
-                    diff.append("[");
-                    for (char character : from) {
-                        append(diff, character);
-                    }
-                    diff.append("->");
-                    for (char character : to) {
-                        append(diff, character);
-                    }
-                    diff.append("]");
-                }));
-                for (; leftPos[0] < oldString.length(); leftPos[0]++) {
-                    char c = oldString.charAt(leftPos[0]);
-                    append(diff, c);
-                }
+                diff.append(String.format("    | Replace #%4d: ", i)).append(StringDiffer.diff(oldString, newString));
                 diff.append("\n");
             }
 
             for (int i = Math.min(oldTextLines.length, newTextLines.length); i < newTextLines.length; i++) {
-                diff.append(String.format("\t| Add #%4d: ", i));
-                newTextLines[i].chars().forEach(c -> append(diff, (char) c));
+                diff.append(String.format("    | Add #%4d: ", i));
+                newTextLines[i].chars().forEach(c -> StringDiffer.append(diff, (char) c));
                 diff.append("\n");
             }
             for (int i = Math.min(oldTextLines.length, newTextLines.length); i < oldTextLines.length; i++) {
-                diff.append(String.format("\t| Removed #%4d: ", i));
-                oldTextLines[i].chars().forEach(c -> append(diff, (char) c));
+                diff.append(String.format("    | Removed #%4d: ", i));
+                oldTextLines[i].chars().forEach(c -> StringDiffer.append(diff, (char) c));
                 diff.append("\n");
             }
         }
@@ -250,21 +221,6 @@ public class LodFilePatch implements Closeable {
         return byteBuffer.flip();
     }
 
-    private void append(StringBuilder diff, char c) {
-        switch (c) {
-            case '\0':
-                break;
-            case '\t':
-                diff.append("\\t");
-                break;
-            case '\n':
-                diff.append("\\n");
-                break;
-            default:
-                diff.append(c);
-        }
-    }
-
     private int getSubFilesCount() {
         return subFilesToPreserve().size() + patchesByName.values().size();
     }
@@ -311,10 +267,6 @@ public class LodFilePatch implements Closeable {
 
     private static int size(byte[] d) {
         return d.length;
-    }
-
-    public static int getDataSize(LodFile.SubFileMeta subFile) {
-        return subFile.compressedSize == 0 ? subFile.uncompressedSize : subFile.compressedSize;
     }
 
     private static String sanitizeName(byte[] name) {

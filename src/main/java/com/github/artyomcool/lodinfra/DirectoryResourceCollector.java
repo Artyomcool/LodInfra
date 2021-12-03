@@ -14,6 +14,7 @@ import java.nio.file.attribute.FileTime;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.*;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import java.util.zip.DataFormatException;
 
@@ -119,6 +120,9 @@ public class DirectoryResourceCollector {
                 ) {
                     List<Resource> resources = XlsTextExtractor.extractResources(xlsPath, sheets);
                     for (Resource resource : resources) {
+                        if (ignoreLangsSet.contains(resource.lang)) {
+                            continue;
+                        }
                         Path lodPath = Utils.resolveTemplate(pathPattern, resource.lang, lodName);
                         lodToResource.computeIfAbsent(lodPath, k -> new LodResources()).addResource(resource);
                         changed++;
@@ -216,7 +220,21 @@ public class DirectoryResourceCollector {
             }
             logRecord.append("\t");
             logRecord.append(lod).append(":\n");
-            log.lines().forEach(l -> logRecord.append("\t\t").append(l).append("\n"));
+
+            System.out.println("Changes in " + lod + ":");
+            log.lines().forEach(new Consumer<>() {
+                int lineNumberToShow = 15;
+                @Override
+                public void accept(String l) {
+                    logRecord.append("\t\t").append(l).append("\n");
+                    if (lineNumberToShow == 0) {
+                        System.out.println("... more");
+                    } else if (lineNumberToShow > 0) {
+                        System.out.println("    " + l);
+                    }
+                    lineNumberToShow--;
+                }
+            });
         });
         logRecord.append("\n");
 
