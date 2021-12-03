@@ -219,6 +219,7 @@ public class DirectoryResourceCollector {
                             StandardOpenOption.TRUNCATE_EXISTING
                     )) {
                         channel.write(newLod);
+                        channel.force(true);
                     }
                 }
             }
