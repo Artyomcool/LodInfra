@@ -5,6 +5,8 @@ import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.StringReader;
+import java.io.StringWriter;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
@@ -19,6 +21,8 @@ import java.util.stream.Collectors;
 import java.util.zip.DataFormatException;
 
 public class DirectoryResourceCollector {
+
+    public static final String INCREMENTAL_STATE_FILE = "lastTs";
 
     private static class LodResources {
         final Map<String, Resource> resourcesByName = new LinkedHashMap<>();
@@ -45,9 +49,17 @@ public class DirectoryResourceCollector {
         Instant now = Instant.now();
         if (checkTimestamps) {
             try {
-                ignoreBeforeTimestamp = Instant.parse(Files.readString(dir.resolve("lastTs")));
+                String text = Files.readString(dir.resolve(INCREMENTAL_STATE_FILE));
+                Properties properties = new Properties();
+                properties.load(new StringReader(text));
+                String prevIgnoreLangs = properties.getProperty("ignoreLangs");
+                if (prevIgnoreLangs != null && prevIgnoreLangs.equals(Arrays.toString(ignoreLangs))) {
+                    ignoreBeforeTimestamp = Instant.parse(properties.getProperty("ts"));
+                } else {
+                    System.out.println("No incremental state: language changed");
+                }
             } catch (Exception ignored) {
-                System.out.println("No previous timestamp saved");
+                System.out.println("No valid incremental state");
             }
         }
 
@@ -164,7 +176,12 @@ public class DirectoryResourceCollector {
         }
 
         if (checkTimestamps) {
-            Files.writeString(dir.resolve("lastTs"), now.toString());
+            Properties properties = new Properties();
+            properties.put("ignoreLangs", Arrays.toString(ignoreLangs));
+            properties.put("ts", now.toString());
+            StringWriter writer = new StringWriter();
+            properties.store(writer, "State of incremental work");
+            Files.writeString(dir.resolve(INCREMENTAL_STATE_FILE), writer.toString());
         }
     }
 
