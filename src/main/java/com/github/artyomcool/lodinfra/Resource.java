@@ -3,11 +3,8 @@ package com.github.artyomcool.lodinfra;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.nio.MappedByteBuffer;
-import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 import java.util.zip.Deflater;
 
 public class Resource {
@@ -55,18 +52,22 @@ public class Resource {
 
     public static Resource fromLod(Path holderPath, LodFile file, LodFile.SubFileMeta meta) {
         String name = new String(meta.name).trim();
-        return new Resource(
-                meta.fileType,
-                null,
-                name,
-                holderPath + ":" + name,
-                ByteBuffer.wrap(
-                        file.originalData,
-                        meta.globalOffsetInFile,
-                        meta.compressedSize == 0 ? meta.uncompressedSize : meta.compressedSize
-                ),
-                meta.compressedSize == 0 ? 0 : meta.uncompressedSize
-        );
+        try {
+            return new Resource(
+                    meta.fileType,
+                    null,
+                    name,
+                    holderPath + ":" + name,
+                    ByteBuffer.wrap(
+                            file.originalData,
+                            meta.globalOffsetInFile,
+                            meta.compressedSize == 0 ? meta.uncompressedSize : meta.compressedSize
+                    ),
+                    meta.compressedSize == 0 ? 0 : meta.uncompressedSize
+            );
+        } catch (IndexOutOfBoundsException e) {
+            throw new IndexOutOfBoundsException("Can't create resource: " + name + "/" + meta.globalOffsetInFile + "/" + file.originalData.length +"/" + meta.compressedSize +"/" + meta.uncompressedSize);
+        }
     }
 
     public static Resource compress(Resource resource, Deflater deflater) {
