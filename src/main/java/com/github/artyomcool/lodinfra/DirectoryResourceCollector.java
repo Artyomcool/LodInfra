@@ -1,6 +1,5 @@
 package com.github.artyomcool.lodinfra;
 
-import org.apache.poi.openxml4j.exceptions.InvalidFormatException;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 
 import java.io.IOException;
@@ -83,6 +82,9 @@ public class DirectoryResourceCollector {
                     continue;
                 }
 
+                ArrayList<Path> langAndLodCollection = new ArrayList<>();
+                resourcesByLangLodName.put(name, langAndLodCollection);
+
                 Files.walkFileTree(path, new SimpleFileVisitor<>() {
                     @Override
                     public FileVisitResult preVisitDirectory(Path path, BasicFileAttributes basicFileAttributes) {
@@ -94,7 +96,7 @@ public class DirectoryResourceCollector {
 
                     @Override
                     public FileVisitResult visitFile(Path path, BasicFileAttributes basicFileAttributes) {
-                        resourcesByLangLodName.computeIfAbsent(name, k -> new ArrayList<>()).add(path);
+                        langAndLodCollection.add(path);
                         return FileVisitResult.CONTINUE;
                     }
                 });

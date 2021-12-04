@@ -85,7 +85,7 @@ public class XlsTextExtractor {
     }
 
     private static boolean skipCell(ColumnInfo columnInfo, Cell cell) {
-        switch (columnInfo.action){
+        switch (columnInfo.action) {
             case SKIP_ALWAYS:
                 return true;
             case SKIP_EMPTY:

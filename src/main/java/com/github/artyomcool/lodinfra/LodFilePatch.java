@@ -4,6 +4,7 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.zip.DataFormatException;
@@ -54,7 +55,25 @@ public class LodFilePatch implements Closeable {
     }
 
     private byte[] nameBytes(String name) {
-        return Arrays.copyOf(name.getBytes(), 16);
+        if (name.length() > 12) {
+            throw new RuntimeException("Resource name '" + name + "' is too long");
+        }
+
+        boolean invalidChar = name.chars().anyMatch(c -> {
+            switch (c) {
+                case '_':
+                case '.':
+                    return false;
+                default:
+                    return !((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z'));
+            }
+        });
+        if (invalidChar) {
+            throw new RuntimeException("Resource name '" + name + "' has invalid name");
+        }
+
+        byte[] bytes = name.getBytes(StandardCharsets.US_ASCII);
+        return Arrays.copyOf(bytes, 16);
     }
 
     public String calculateDiff() throws DataFormatException {
