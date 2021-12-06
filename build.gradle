@@ -39,6 +39,7 @@ dependencies {
         exclude group: 'org.apache.logging.log4j'
     }
     implementation 'org.apache.commons:commons-text:1.9'
+    implementation 'ar.com.hjg:pngj:2.1.0'
 
     implementation 'org.graalvm.sdk:graal-sdk:21.3.0'
 

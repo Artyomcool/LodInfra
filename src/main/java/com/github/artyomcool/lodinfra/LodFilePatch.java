@@ -1,6 +1,5 @@
 package com.github.artyomcool.lodinfra;
 
-import java.io.Closeable;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -8,66 +7,64 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.zip.DataFormatException;
-import java.util.zip.Deflater;
-import java.util.zip.Inflater;
 
-public class LodFilePatch implements Closeable {
+public class LodFilePatch {
 
     private static final int HEADER_SIZE = getLodHeaderSize();
     private static final int SUB_FILE_HEADER_SIZE = getLodMetaHeaderSize();
 
-    private final Path lodPath;
     private final LodFile file;
-    private final Map<String, LodFile.SubFileMeta> originalSubFilesByName = new HashMap<>();
-    private final Set<String> removedOriginalSubFiles = new HashSet<>();
+    private final Map<String, Resource> originalResourcesByName = new HashMap<>();
+    private final Set<String> removedByName = new HashSet<>();
     private final Map<String, Resource> patchesByName = new HashMap<>();
 
-    private final Inflater inflater = new Inflater();
-    private final Deflater deflater;
+    private final ResourcePreprocessor preprocessor;
 
-    public static LodFilePatch fromPath(Path path, int compressionLevel) throws IOException {
-        return new LodFilePatch(path, LodFile.loadOrCreate(path), compressionLevel);
+    public static LodFilePatch fromPath(Path path, ResourcePreprocessor preprocessor) throws IOException {
+        return new LodFilePatch(path, LodFile.loadOrCreate(path), preprocessor);
     }
 
-    private LodFilePatch(Path lodPath, LodFile file, int compressionLevel) {
-        this.lodPath = lodPath;
+    private LodFilePatch(Path lodPath, LodFile file, ResourcePreprocessor preprocessor) {
         this.file = file;
-        this.deflater = new Deflater(compressionLevel);
+        this.preprocessor = preprocessor;
         for (LodFile.SubFileMeta subFile : file.subFiles) {
-            String name = sanitizeName(subFile.name);
-            originalSubFilesByName.put(name, subFile);
+            Resource resource = Resource.fromLod(lodPath, file, subFile);
+            originalResourcesByName.put(resource.sanitizedName.toLowerCase(), resource);
         }
     }
 
     public void removeAllFromOriginal() {
-        removedOriginalSubFiles.addAll(originalSubFilesByName.keySet());
+        removedByName.addAll(originalResourcesByName.keySet());
     }
 
     public void removeFromOriginal(String name) {
-        name = sanitizeName(name);
-        if (originalSubFilesByName.containsKey(name)) {
-            removedOriginalSubFiles.add(name);
+        name = name.toLowerCase();
+        if (originalResourcesByName.containsKey(name)) {
+            removedByName.add(name);
         }
     }
 
     public void addPatch(Resource resource) {
-        patchesByName.put(sanitizeName(resource.name), Resource.compress(resource, deflater));
+        patchesByName.put(resource.sanitizedName.toLowerCase(), resource);
     }
 
     private byte[] nameBytes(String name) {
         if (name.length() > 12) {
-            throw new RuntimeException("Resource name '" + name + "' is too long");
+            if (name.length() > 15) {
+                throw new RuntimeException("Resource name '" + name + "' is too long");
+            } else {
+                System.out.println("NOTE: Resource name '" + name + "' is longer then 12 chars, game treats it as '" + name.substring(0, 12) + "'");
+            }
         }
 
-        boolean invalidChar = name.chars().anyMatch(c -> {
-            switch (c) {
-                case '_':
-                case '.':
-                    return false;
-                default:
-                    return !((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z'));
-            }
-        });
+        boolean invalidChar = name.chars().anyMatch(c -> !(
+                (c >= 'A' && c <= 'Z')
+                        || (c >= 'a' && c <= 'z')
+                        || c == '.'
+                        || c == '_'
+                        || (c >= '0' && c <= '9')
+                )
+        );
         if (invalidChar) {
             throw new RuntimeException("Resource name '" + name + "' has invalid name");
         }
@@ -86,7 +83,7 @@ public class LodFilePatch implements Closeable {
                         .orElse(1)
         );
         ByteBuffer uncompressedOldBuffer = ByteBuffer.allocate(
-                originalSubFilesByName.values().stream()
+                originalResourcesByName.values().stream()
                         .mapToInt(r -> r.uncompressedSize)
                         .max()
                         .orElse(1)
@@ -96,18 +93,14 @@ public class LodFilePatch implements Closeable {
             String sanitizedName = entry.getKey();
             Resource resource = entry.getValue();
 
-            LodFile.SubFileMeta old = originalSubFilesByName.get(sanitizedName);
+            Resource old = originalResourcesByName.get(sanitizedName);
             if (old == null) {
                 diff.append("Added: ").append(resource.name).append("\n");
                 continue;
             }
 
-            if (resource.uncompressedSize != 0 && old.compressedSize != 0) {
-                if (resource.data.equals(ByteBuffer.wrap(
-                        file.originalData,
-                        old.globalOffsetInFile,
-                        old.compressedSize
-                ))) {
+            if (resource.uncompressedSize != 0 && old.uncompressedSize != 0) {
+                if (resource.data.equals(old.data)) {
                     continue;
                 }
             }
@@ -118,29 +111,13 @@ public class LodFilePatch implements Closeable {
             if (resource.uncompressedSize == 0) {
                 uncompressedNew = resource.data;
             } else {
-                uncompressedNewBuffer.clear();
-                inflater.reset();
-                inflater.setInput(resource.data.asReadOnlyBuffer());
-                inflater.inflate(uncompressedNewBuffer);
-                uncompressedNewBuffer.flip();
-
-                uncompressedNew = uncompressedNewBuffer;
+                uncompressedNew = preprocessor.uncompressed(resource, uncompressedNewBuffer);
             }
 
-            if (old.compressedSize == 0) {
-                uncompressedOld = ByteBuffer.wrap(
-                        file.originalData,
-                        old.globalOffsetInFile,
-                        old.uncompressedSize
-                );
+            if (old.uncompressedSize == 0) {
+                uncompressedOld = old.data;
             } else {
-                uncompressedOldBuffer.clear();
-                inflater.reset();
-                inflater.setInput(file.originalData, old.globalOffsetInFile, old.compressedSize);
-                inflater.inflate(uncompressedOldBuffer);
-                uncompressedOldBuffer.flip();
-
-                uncompressedOld = uncompressedOldBuffer;
+                uncompressedOld = preprocessor.uncompressed(old, uncompressedOldBuffer);
             }
 
             if (uncompressedNew.equals(uncompressedOld)) {
@@ -180,6 +157,14 @@ public class LodFilePatch implements Closeable {
                 diff.append("\n");
             }
         }
+
+        for (String removed : removedByName) {
+            if (patchesByName.containsKey(removed)) {
+                continue;
+            }
+            diff.append("Removed: ").append(removed).append("\n");
+        }
+
         return diff.toString();
     }
 
@@ -191,11 +176,11 @@ public class LodFilePatch implements Closeable {
 
     public ByteBuffer serialize() {
         List<Resource> resources = new ArrayList<>(patchesByName.values());
-        originalSubFilesByName.forEach((sanitizedName, meta) -> {
-            if (removedOriginalSubFiles.contains(sanitizedName) || patchesByName.containsKey(sanitizedName)) {
+        originalResourcesByName.forEach((sanitizedName, resource) -> {
+            if (removedByName.contains(sanitizedName) || patchesByName.containsKey(sanitizedName)) {
                 return;
             }
-            resources.add(Resource.fromLod(lodPath, file, meta));
+            resources.add(resource);
         });
         resources.sort(Comparator.comparing(r -> r.name.toLowerCase()));
 
@@ -204,7 +189,7 @@ public class LodFilePatch implements Closeable {
 
         byte[] result = new byte[headersSize + contentSize];
 
-        int subFilesCount = getSubFilesCount();
+        int subFilesCount = resources.size();
 
         ByteBuffer byteBuffer = ByteBuffer.wrap(result).order(ByteOrder.LITTLE_ENDIAN);
         byteBuffer.putInt(file.magic);
@@ -238,19 +223,6 @@ public class LodFilePatch implements Closeable {
         }
 
         return byteBuffer.flip();
-    }
-
-    private int getSubFilesCount() {
-        return subFilesToPreserve().size() + patchesByName.values().size();
-    }
-
-    private List<LodFile.SubFileMeta> subFilesToPreserve() {
-        List<LodFile.SubFileMeta> result = new ArrayList<>(file.subFiles);
-        result.removeIf(f -> {
-            String name = sanitizeName(f.name);
-            return removedOriginalSubFiles.contains(name) || patchesByName.containsKey(name);
-        });
-        return result;
     }
 
     private static int getLodHeaderSize() {
@@ -288,21 +260,8 @@ public class LodFilePatch implements Closeable {
         return d.length;
     }
 
-    private static String sanitizeName(byte[] name) {
-        return sanitizeName(nameToString(name));
-    }
-
     private static String nameToString(byte[] name) {
         return new String(name).trim();
     }
 
-    private static String sanitizeName(String name) {
-        return name.toUpperCase();
-    }
-
-    @Override
-    public void close() {
-        inflater.end();
-        deflater.end();
-    }
 }

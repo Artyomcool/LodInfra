@@ -5,37 +5,53 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.zip.Deflater;
+import java.util.Locale;
 
 public class Resource {
 
     public final int type;
     public final String lang;
     public final String name;
+    public final String sanitizedName;
     public final String virtualPath;
     public final ByteBuffer data;
     public final int uncompressedSize;
 
-    private Resource(int type, String lang, String name, String virtualPath, ByteBuffer data, int uncompressedSize) {
+    public Resource(int type, String lang, String name, String sanitizedName, String virtualPath, ByteBuffer data, int uncompressedSize) {
         this.type = type;
         this.lang = lang;
         this.name = name;
+        this.sanitizedName = sanitizedName;
         this.virtualPath = virtualPath;
         this.data = data;
         this.uncompressedSize = uncompressedSize;
     }
 
-    public static Resource fromPath(String lang, Path path) throws IOException {
+    // TODO move it out
+    public static Resource fromPath(String lang, Path path, boolean sanitize) throws IOException {
         ByteBuffer buffer = ByteBuffer.wrap(Files.readAllBytes(path));
         String name = path.getFileName().toString();
+        String[] nameWithExt = name.split("\\.");
+        if (nameWithExt[nameWithExt.length - 1].equalsIgnoreCase("png")) {
+            buffer = ResourceConverter.fromPng(name, buffer);
+        } else if (nameWithExt[nameWithExt.length - 1].equalsIgnoreCase("bmp")) {
+            buffer = ResourceConverter.fromBMP(name, buffer);
+        }
+        String ext = nameWithExt[1];
+        name = nameWithExt[0] + "." + ext;
         return new Resource(
-                typeOf(name, buffer),
+                typeOf(ext, buffer),
                 lang,
                 name,
+                sanitize ? sanitizeName(name) : name,
                 path.toString(),
                 buffer,
                 0
         );
+    }
+
+    public static String sanitizeName(String name) {
+        return name.substring(0, Math.min(name.length(), 12)).toLowerCase(Locale.ROOT);
     }
 
     public static Resource fromString(Path holderPath, String lang, String name, String data) {
@@ -44,6 +60,7 @@ public class Resource {
                 2,
                 lang,
                 name,
+                sanitizeName(name),
                 holderPath + ":" + name,
                 ByteBuffer.wrap(dataBytes),
                 0
@@ -52,58 +69,25 @@ public class Resource {
 
     public static Resource fromLod(Path holderPath, LodFile file, LodFile.SubFileMeta meta) {
         String name = new String(meta.name).trim();
-        try {
-            return new Resource(
-                    meta.fileType,
-                    null,
-                    name,
-                    holderPath + ":" + name,
-                    ByteBuffer.wrap(
-                            file.originalData,
-                            meta.globalOffsetInFile,
-                            meta.compressedSize == 0 ? meta.uncompressedSize : meta.compressedSize
-                    ),
-                    meta.compressedSize == 0 ? 0 : meta.uncompressedSize
-            );
-        } catch (IndexOutOfBoundsException e) {
-            throw new IndexOutOfBoundsException("Can't create resource: " + name + "/" + meta.globalOffsetInFile + "/" + file.originalData.length +"/" + meta.compressedSize +"/" + meta.uncompressedSize);
-        }
+        return new Resource(
+                meta.fileType,
+                null,
+                name,
+                name,
+                holderPath + ":" + name,
+                ByteBuffer.wrap(
+                        file.originalData,
+                        meta.globalOffsetInFile,
+                        meta.compressedSize == 0 ? meta.uncompressedSize : meta.compressedSize
+                ),
+                meta.compressedSize == 0 ? 0 : meta.uncompressedSize
+        );
     }
 
-    public static Resource compress(Resource resource, Deflater deflater) {
-        if (resource.uncompressedSize != 0) {
-            return resource;
-        }
 
-        deflater.reset();
-        deflater.setInput(resource.data.asReadOnlyBuffer());
-        deflater.finish();
-
-        ByteBuffer temp = ByteBuffer.allocate(resource.data.capacity());
-        int compressedSize = deflater.deflate(temp, Deflater.FULL_FLUSH);
-        temp.flip();
-
-        if (compressedSize >= resource.data.remaining()) {
-            return resource;
-        } else {
-            ByteBuffer clone = ByteBuffer.allocate(temp.remaining());
-            clone.put(temp);
-            clone.flip();
-
-            return new Resource(
-                    resource.type,
-                    resource.lang,
-                    resource.name,
-                    resource.virtualPath + "#compressed",
-                    clone,
-                    resource.data.remaining()
-            );
-        }
-    }
-
-    private static int typeOf(String name, ByteBuffer data) {
+    private static int typeOf(String ext, ByteBuffer data) {
         ByteBuffer buf;
-        switch (name.split("\\.")[1].toLowerCase()) {
+        switch (ext.toLowerCase()) {
             case "h3c":
             case "xmi":
             case "ifr":
@@ -119,7 +103,7 @@ public class Resource {
             case "pal":
                 return 96;
             case "pcx":
-                buf = data.asReadOnlyBuffer().order(ByteOrder.BIG_ENDIAN);
+                buf = data.asReadOnlyBuffer().order(ByteOrder.LITTLE_ENDIAN);
                 int size = buf.getInt();
                 int width = buf.getInt();
                 int height = buf.getInt();
@@ -134,7 +118,6 @@ public class Resource {
                 buf = data.asReadOnlyBuffer().order(ByteOrder.BIG_ENDIAN);
                 return buf.getInt();
         }
-        throw new IllegalArgumentException("Unknown type for " + name);
+        throw new IllegalArgumentException("Unknown type for " + ext);
     }
-
 }

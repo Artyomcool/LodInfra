@@ -4,8 +4,6 @@ import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.StringReader;
-import java.io.StringWriter;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
@@ -21,53 +19,25 @@ import java.util.zip.DataFormatException;
 
 public class DirectoryResourceCollector {
 
-    public static final String INCREMENTAL_STATE_FILE = "lastTs";
+    public final Path dir;
+    public final String pathPattern;
 
-    private static class LodResources {
-        final Map<String, Resource> resourcesByName = new LinkedHashMap<>();
+    public boolean dry = false;
+    public boolean logDetailedDiff = false;
+    public Instant ignoreBeforeTimestamp = Instant.MIN;
+    public int compressionLevel = 0;
+    public Set<String> allowedLangs = new HashSet<>();
+    public Set<String> dontSanitize = new HashSet<>();
 
-        public void addResource(Resource resource) throws IOException {
-            Resource old = resourcesByName.put(resource.name, resource);
-            if (old != null) {
-                throw new IOException("File duplicated: " + old.virtualPath + " and " + resource.virtualPath);
-            }
-        }
+    public DirectoryResourceCollector(Path dir, String pathPattern) {
+        this.dir = dir;
+        this.pathPattern = pathPattern;
     }
 
-    // TODO move config into constructor
-    public static void collectResources(
-            Path dir,
-            String pathPattern,
-            boolean dry,
-            boolean logDetailedDiff,
-            boolean checkTimestamps,
-            int compressionLevel,
-            String[] ignoreLangs
-    ) throws IOException, DataFormatException {
-        Instant ignoreBeforeTimestamp = Instant.MIN;
-        Instant now = Instant.now();
-        if (checkTimestamps) {
-            try {
-                String text = Files.readString(dir.resolve(INCREMENTAL_STATE_FILE));
-                Properties properties = new Properties();
-                properties.load(new StringReader(text));
-                String prevIgnoreLangs = properties.getProperty("ignoreLangs");
-                if (prevIgnoreLangs != null && prevIgnoreLangs.equals(Arrays.toString(ignoreLangs))) {
-                    ignoreBeforeTimestamp = Instant.parse(properties.getProperty("ts"));
-                } else {
-                    System.out.println("No incremental state: language changed");
-                }
-            } catch (Exception ignored) {
-                System.out.println("No valid incremental state");
-            }
-        }
+    public void collectResources() throws IOException, DataFormatException {
 
         Map<String, List<Path>> xlsFilesByLodName = new HashMap<>();
         Map<String, List<Path>> resourcesByLangLodName = new HashMap<>();
-        Set<String> ignoreLangsSet = new HashSet<>();
-        for (String ignoreLang : ignoreLangs) {
-            ignoreLangsSet.add(ignoreLang.toLowerCase());
-        }
 
         List<Path> files = Files.list(dir).collect(Collectors.toList());
         for (Path path : files) {
@@ -78,9 +48,11 @@ public class DirectoryResourceCollector {
                 }
 
                 String lang = name.substring(0, name.indexOf("@"));
-                if (ignoreLangsSet.contains(lang.toLowerCase())) {
+                if (!allowedLangs.isEmpty() && !allowedLangs.contains(lang.toLowerCase())) {
                     continue;
                 }
+
+                System.out.println("Collecting files from " + name);
 
                 ArrayList<Path> langAndLodCollection = new ArrayList<>();
                 resourcesByLangLodName.put(name, langAndLodCollection);
@@ -124,9 +96,11 @@ public class DirectoryResourceCollector {
 
                 FileTime lastModifiedTime = Files.getLastModifiedTime(xlsPath);
                 if (lastModifiedTime.toInstant().isBefore(ignoreBeforeTimestamp)) {
-                    System.out.println("Xls " + xlsPath + " is modified at " + lastModifiedTime + ", ignoring (now is " +now + ")");
+                    System.out.println("Xls " + xlsPath + " is modified at " + lastModifiedTime + ", ignoring (last timestamp is " + ignoreBeforeTimestamp + ")");
                     continue;
                 }
+
+                System.out.println("Collecting texts from " + xlsPath.getFileName());
 
                 try (
                         InputStream stream = Files.newInputStream(xlsPath);
@@ -134,7 +108,7 @@ public class DirectoryResourceCollector {
                 ) {
                     List<Resource> resources = XlsTextExtractor.extractResources(xlsPath, sheets);
                     for (Resource resource : resources) {
-                        if (ignoreLangsSet.contains(resource.lang)) {
+                        if (!allowedLangs.isEmpty() && !allowedLangs.contains(resource.lang)) {
                             continue;
                         }
                         Path lodPath = Utils.resolveTemplate(pathPattern, resource.lang, lodName);
@@ -160,7 +134,8 @@ public class DirectoryResourceCollector {
                     continue;
                 }
 
-                Resource resource = Resource.fromPath(lang, path);
+                String fileName = path.getFileName().toString().toLowerCase();
+                Resource resource = Resource.fromPath(lang, path, !dontSanitize.contains(fileName));
                 resources.addResource(resource);
                 changed++;
             }
@@ -170,35 +145,35 @@ public class DirectoryResourceCollector {
             System.out.println("Ignored " + ignored + " files, changed " + changed);
         }
 
-        Map<Path, String> logsByLod = writeLods(lodToResource, dry, logDetailedDiff, checkTimestamps, compressionLevel);
+        Map<Path, String> logsByLod = writeLods(lodToResource);
         System.out.println("Lods written");
 
         if (logDetailedDiff) {
-            writeLog(dir, logsByLod);
-        }
-
-        if (checkTimestamps) {
-            Properties properties = new Properties();
-            properties.put("ignoreLangs", Arrays.toString(ignoreLangs));
-            properties.put("ts", now.toString());
-            StringWriter writer = new StringWriter();
-            properties.store(writer, "State of incremental work");
-            Files.writeString(dir.resolve(INCREMENTAL_STATE_FILE), writer.toString());
+            writeLog(logsByLod);
         }
     }
 
-    private static Map<Path, String> writeLods(Map<Path, LodResources> lodToResource, boolean dry, boolean logDetailedDiff, boolean preserveData, int compressionLevel) throws IOException, DataFormatException {
+    private Map<Path, String> writeLods(Map<Path, LodResources> lodToResource) throws IOException, DataFormatException {
         Map<Path, String> logsByLod = new LinkedHashMap<>();
 
-        for (Map.Entry<Path, LodResources> entry : lodToResource.entrySet()) {
-            Path lodPath = entry.getKey();
-            if (entry.getValue().resourcesByName.isEmpty()) {
-                continue;
-            }
+        try (ResourcePreprocessor resourcePreprocessor = new ResourcePreprocessor(compressionLevel)) {
 
-            System.out.println("Packing " + lodPath);
-            try (LodFilePatch lodFilePatch = LodFilePatch.fromPath(lodPath, compressionLevel)) {
-                if (!preserveData) {
+            for (Map.Entry<Path, LodResources> entry : lodToResource.entrySet()) {
+                Path lodPath = entry.getKey();
+                if (entry.getValue().resourcesByName.isEmpty()) {
+                    continue;
+                }
+
+                System.out.println("Packing " + lodPath);
+                System.out.println("Preprocess resources");
+
+                for (Map.Entry<String, Resource> resource : entry.getValue().resourcesByName.entrySet()) {
+                    resource.setValue(resourcePreprocessor.compressed(resource.getValue()));
+                }
+
+                System.out.println("Write " + lodPath);
+                LodFilePatch lodFilePatch = LodFilePatch.fromPath(lodPath, resourcePreprocessor);
+                if (ignoreBeforeTimestamp.equals(Instant.MIN)) {
                     lodFilePatch.removeAllFromOriginal();
                 }
 
@@ -229,7 +204,7 @@ public class DirectoryResourceCollector {
         return logsByLod;
     }
 
-    private static void writeLog(Path dir, Map<Path, String> logsByLod) throws IOException {
+    private void writeLog(Map<Path, String> logsByLod) throws IOException {
         LocalDate now = LocalDate.now();
         Path logPath = dir.resolve("logs").resolve(String.format("%4d-%2d", now.getYear(), now.getMonth().getValue()));
 
@@ -244,6 +219,7 @@ public class DirectoryResourceCollector {
             System.out.println("Changes in " + lod + ":");
             log.lines().forEach(new Consumer<>() {
                 int lineNumberToShow = 15;
+
                 @Override
                 public void accept(String l) {
                     logRecord.append("\t\t").append(l).append("\n");
@@ -266,6 +242,18 @@ public class DirectoryResourceCollector {
                 StandardOpenOption.WRITE,
                 StandardOpenOption.APPEND
         );
+    }
+
+
+    private static class LodResources {
+        final Map<String, Resource> resourcesByName = new LinkedHashMap<>();
+
+        public void addResource(Resource resource) throws IOException {
+            Resource old = resourcesByName.put(resource.sanitizedName, resource);
+            if (old != null) {
+                throw new IOException("File duplicated: " + old.virtualPath + " and " + resource.virtualPath);
+            }
+        }
     }
 
 }
