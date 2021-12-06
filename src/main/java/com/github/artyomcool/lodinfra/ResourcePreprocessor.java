@@ -57,8 +57,6 @@ public class ResourcePreprocessor implements Closeable {
         return out;
     }
 
-
-
     @Override
     public void close() {
         inflater.end();

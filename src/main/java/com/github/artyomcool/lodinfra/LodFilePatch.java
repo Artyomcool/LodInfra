@@ -14,9 +14,9 @@ public class LodFilePatch {
     private static final int SUB_FILE_HEADER_SIZE = getLodMetaHeaderSize();
 
     private final LodFile file;
-    private final Map<String, Resource> originalResourcesByName = new HashMap<>();
-    private final Set<String> removedByName = new HashSet<>();
-    private final Map<String, Resource> patchesByName = new HashMap<>();
+    private final Map<String, Resource> originalResourcesByName = new LinkedHashMap<>();
+    private final Set<String> removedByName = new LinkedHashSet<>();
+    private final Map<String, Resource> patchesByName = new LinkedHashMap<>();
 
     private final ResourcePreprocessor preprocessor;
 
@@ -29,7 +29,7 @@ public class LodFilePatch {
         this.preprocessor = preprocessor;
         for (LodFile.SubFileMeta subFile : file.subFiles) {
             Resource resource = Resource.fromLod(lodPath, file, subFile);
-            originalResourcesByName.put(resource.sanitizedName.toLowerCase(), resource);
+            originalResourcesByName.put(resource.sanitizedName, resource);
         }
     }
 
@@ -38,25 +38,17 @@ public class LodFilePatch {
     }
 
     public void removeFromOriginal(String name) {
-        name = name.toLowerCase();
+        name = Resource.sanitizeName(name);
         if (originalResourcesByName.containsKey(name)) {
             removedByName.add(name);
         }
     }
 
     public void addPatch(Resource resource) {
-        patchesByName.put(resource.sanitizedName.toLowerCase(), resource);
+        patchesByName.put(resource.sanitizedName, resource);
     }
 
     private byte[] nameBytes(String name) {
-        if (name.length() > 12) {
-            if (name.length() > 15) {
-                throw new RuntimeException("Resource name '" + name + "' is too long");
-            } else {
-                System.out.println("NOTE: Resource name '" + name + "' is longer then 12 chars, game treats it as '" + name.substring(0, 12) + "'");
-            }
-        }
-
         boolean invalidChar = name.chars().anyMatch(c -> !(
                 (c >= 'A' && c <= 'Z')
                         || (c >= 'a' && c <= 'z')
@@ -182,7 +174,7 @@ public class LodFilePatch {
             }
             resources.add(resource);
         });
-        resources.sort(Comparator.comparing(r -> r.name.toLowerCase()));
+        resources.sort(Comparator.comparing(r -> r.sanitizedName));
 
         int headersSize = HEADER_SIZE + SUB_FILE_HEADER_SIZE * resources.size();
         int contentSize = resources.stream().mapToInt(r -> r.data.remaining()).sum();

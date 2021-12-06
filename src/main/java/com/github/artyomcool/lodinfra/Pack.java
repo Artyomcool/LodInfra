@@ -54,8 +54,8 @@ public class Pack {
         collector.logDetailedDiff = Boolean.parseBoolean(properties.getProperty("logDetailedDiff", "false"));
         boolean checkTimeStamps = Boolean.parseBoolean(properties.getProperty("checkTimestamps", "false"));
         collector.compressionLevel = Integer.parseInt(properties.getProperty("compressionLevel", "0"));
-        String allowedLangs = properties.getProperty("allowedLangs", "");
-        String dontSanitize = properties.getProperty("dontSanitize", "");
+        String allowedLangs = properties.getProperty("allowedLangs", "").toLowerCase();
+        String dontWarnAboutNames = properties.getProperty("dontWarnAboutNames", "").toLowerCase();
 
         Path timestampFile = self.resolve("lastTs");
         Instant now = Instant.now();
@@ -63,7 +63,7 @@ public class Pack {
             collector.ignoreBeforeTimestamp = loadTimestamp(timestampFile, allowedLangs);
         }
         collector.allowedLangs = new HashSet<>(Arrays.asList(allowedLangs.split(",")));
-        collector.dontSanitize = new HashSet<>(Arrays.asList(dontSanitize.split(",")));
+        collector.dontWarnAboutNames = new HashSet<>(Arrays.asList(dontWarnAboutNames.split(",")));
 
         collector.collectResources();
 

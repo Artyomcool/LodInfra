@@ -28,7 +28,7 @@ public class Resource {
     }
 
     // TODO move it out
-    public static Resource fromPath(String lang, Path path, boolean sanitize) throws IOException {
+    public static Resource fromPath(String lang, Path path) throws IOException {
         ByteBuffer buffer = ByteBuffer.wrap(Files.readAllBytes(path));
         String name = path.getFileName().toString();
         String[] nameWithExt = name.split("\\.");
@@ -43,7 +43,7 @@ public class Resource {
                 typeOf(ext, buffer),
                 lang,
                 name,
-                sanitize ? sanitizeName(name) : name,
+                sanitizeName(name),
                 path.toString(),
                 buffer,
                 0
@@ -51,7 +51,7 @@ public class Resource {
     }
 
     public static String sanitizeName(String name) {
-        return name.substring(0, Math.min(name.length(), 12)).toLowerCase(Locale.ROOT);
+        return name.toLowerCase(Locale.ROOT);
     }
 
     public static Resource fromString(Path holderPath, String lang, String name, String data) {
@@ -73,7 +73,7 @@ public class Resource {
                 meta.fileType,
                 null,
                 name,
-                name,
+                sanitizeName(name),
                 holderPath + ":" + name,
                 ByteBuffer.wrap(
                         file.originalData,

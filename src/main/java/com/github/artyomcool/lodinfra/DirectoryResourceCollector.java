@@ -27,7 +27,7 @@ public class DirectoryResourceCollector {
     public Instant ignoreBeforeTimestamp = Instant.MIN;
     public int compressionLevel = 0;
     public Set<String> allowedLangs = new HashSet<>();
-    public Set<String> dontSanitize = new HashSet<>();
+    public Set<String> dontWarnAboutNames = new HashSet<>();
 
     public DirectoryResourceCollector(Path dir, String pathPattern) {
         this.dir = dir;
@@ -134,8 +134,7 @@ public class DirectoryResourceCollector {
                     continue;
                 }
 
-                String fileName = path.getFileName().toString().toLowerCase();
-                Resource resource = Resource.fromPath(lang, path, !dontSanitize.contains(fileName));
+                Resource resource = Resource.fromPath(lang, path);
                 resources.addResource(resource);
                 changed++;
             }
@@ -168,6 +167,17 @@ public class DirectoryResourceCollector {
                 System.out.println("Preprocess resources");
 
                 for (Map.Entry<String, Resource> resource : entry.getValue().resourcesByName.entrySet()) {
+                    String lowName = resource.getValue().name.toLowerCase();
+                    if (lowName.length() > 12) {
+                        if (lowName.length() > 15) {
+                            throw new RuntimeException("Resource lowName '" + lowName + "' is too long");
+                        } else {
+                            if (!dontWarnAboutNames.contains(lowName)) {
+                                System.out.println("NOTE: Resource lowName '" + lowName + "' is longer then 12 chars, game treats it as '" + lowName.substring(0, 12) + "'");
+                            }
+                        }
+                    }
+
                     resource.setValue(resourcePreprocessor.compressed(resource.getValue()));
                 }
 
