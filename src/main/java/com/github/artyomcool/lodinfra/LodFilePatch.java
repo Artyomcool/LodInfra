@@ -117,7 +117,7 @@ public class LodFilePatch {
             }
 
             diff.append("Changed: ").append(resource.name).append("\n");
-            if (!sanitizedName.endsWith(".TXT")) {
+            if (!sanitizedName.endsWith(".txt")) {
                 continue;
             }
 

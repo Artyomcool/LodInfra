@@ -216,7 +216,7 @@ public class DirectoryResourceCollector {
 
     private void writeLog(Map<Path, String> logsByLod) throws IOException {
         LocalDate now = LocalDate.now();
-        Path logPath = dir.resolve("logs").resolve(String.format("%4d-%2d", now.getYear(), now.getMonth().getValue()));
+        Path logPath = dir.resolve("logs").resolve(now + ".log");
 
         StringBuilder logRecord = new StringBuilder().append(now).append(":\n");
         logsByLod.forEach((lod, log) -> {

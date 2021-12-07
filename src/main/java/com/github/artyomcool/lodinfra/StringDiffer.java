@@ -1,9 +1,6 @@
 package com.github.artyomcool.lodinfra;
 
-import org.apache.commons.text.diff.EditScript;
-import org.apache.commons.text.diff.ReplacementsFinder;
-import org.apache.commons.text.diff.ReplacementsHandler;
-import org.apache.commons.text.diff.StringsComparator;
+import org.apache.commons.text.diff.*;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -38,27 +35,13 @@ public class StringDiffer {
     }
 
     public static String diff(String oldString, String newString) {
-        List<Element> changes = new ArrayList<>();
 
-        ReplacementsFinder<Character> finder = new ReplacementsFinder<>(new ReplacementsHandler<>() {
-            int stringPos;
-            @Override
-            public void handleReplacement(int skipped, List<Character> from, List<Character> to) {
-                if (skipped != 0) {
-                    changes.add(Element.same(oldString, stringPos, skipped));
-                    stringPos += skipped;
-                }
-
-                changes.add(Element.change(from, to));
-                stringPos += from.size();
-            }
-        });
+        ReplacementsFinder finder = new ReplacementsFinder(oldString);
         new StringsComparator(oldString, newString).getScript().visit(finder);
-        finder.visitKeepCommand(null);  // to flush all pending changes
 
         StringBuilder diff = new StringBuilder();
         Element last = null;
-        for (Element change : changes) {
+        for (Element change : finder.flushChanges()) {
             if (last == null || last.prev == null) {
                 append(diff, last);
                 last = change;
@@ -131,5 +114,57 @@ public class StringDiffer {
             default:
                 diff.append(c);
         }
+    }
+
+    private static class ReplacementsFinder implements CommandVisitor<Character> {
+        private final List<Element> changes = new ArrayList<>();
+
+        private final List<Character> pendingInsertions = new ArrayList<>();
+        private final List<Character> pendingDeletions = new ArrayList<>();
+
+        private final String oldString;
+
+        private int skipped;
+        private int stringPos;
+
+        private ReplacementsFinder(String oldString) {
+            this.oldString = oldString;
+        }
+
+        @Override
+        public void visitInsertCommand(Character object) {
+            pendingInsertions.add(object);
+        }
+        @Override
+        public void visitDeleteCommand(Character object) {
+            pendingDeletions.add(object);
+        }
+
+        @Override
+        public void visitKeepCommand(Character object) {
+            if (pendingDeletions.isEmpty() && pendingInsertions.isEmpty() && object != null) {
+                ++skipped;
+            } else {
+                if (skipped != 0) {
+                    changes.add(Element.same(oldString, stringPos, skipped));
+                    stringPos += skipped;
+                }
+
+                changes.add(Element.change(pendingDeletions, pendingInsertions));
+                stringPos += pendingDeletions.size();
+
+                pendingDeletions.clear();
+                pendingInsertions.clear();
+                skipped = 1;
+            }
+        }
+
+        public List<Element> flushChanges() {
+            if (skipped > 0) {
+                changes.add(Element.same(oldString, stringPos, skipped));
+            }
+            return changes;
+        }
+
     }
 }
