@@ -19,25 +19,22 @@ public class StringDiffer {
             return element;
         }
 
-        static Element change(List<Character> from, List<Character> to) {
+        static Element change(StringBuilder from, StringBuilder to) {
             Element element = new Element();
-            element.prev = fromList(from);
-            element.now = fromList(to);
+            element.prev = new StringBuilder(from);
+            element.now = new StringBuilder(to);
             return element;
-        }
-
-        static StringBuilder fromList(List<Character> characters) {
-            StringBuilder builder = new StringBuilder();
-            characters.forEach(builder::append);
-            return builder;
         }
 
     }
 
     public static String diff(String oldString, String newString) {
 
+        String endOld = "\0";
+        String endNew = "\0";
+
         ReplacementsFinder finder = new ReplacementsFinder(oldString);
-        new StringsComparator(oldString, newString).getScript().visit(finder);
+        new StringsComparator(oldString + endOld, newString + endNew).getScript().visit(finder);
 
         StringBuilder diff = new StringBuilder();
         Element last = null;
@@ -119,8 +116,8 @@ public class StringDiffer {
     private static class ReplacementsFinder implements CommandVisitor<Character> {
         private final List<Element> changes = new ArrayList<>();
 
-        private final List<Character> pendingInsertions = new ArrayList<>();
-        private final List<Character> pendingDeletions = new ArrayList<>();
+        private final StringBuilder pendingInsertions = new StringBuilder();
+        private final StringBuilder pendingDeletions = new StringBuilder();
 
         private final String oldString;
 
@@ -133,16 +130,16 @@ public class StringDiffer {
 
         @Override
         public void visitInsertCommand(Character object) {
-            pendingInsertions.add(object);
+            pendingInsertions.append(object);
         }
         @Override
         public void visitDeleteCommand(Character object) {
-            pendingDeletions.add(object);
+            pendingDeletions.append(object);
         }
 
         @Override
         public void visitKeepCommand(Character object) {
-            if (pendingDeletions.isEmpty() && pendingInsertions.isEmpty() && object != null) {
+            if (pendingDeletions.length() == 0 && pendingInsertions.length() == 0) {
                 ++skipped;
             } else {
                 if (skipped != 0) {
@@ -151,18 +148,17 @@ public class StringDiffer {
                 }
 
                 changes.add(Element.change(pendingDeletions, pendingInsertions));
-                stringPos += pendingDeletions.size();
+                stringPos += pendingDeletions.length();
 
-                pendingDeletions.clear();
-                pendingInsertions.clear();
+                pendingDeletions.setLength(0);
+                pendingInsertions.setLength(0);
                 skipped = 1;
             }
         }
 
         public List<Element> flushChanges() {
-            if (skipped > 0) {
-                changes.add(Element.same(oldString, stringPos, skipped));
-            }
+            // there are always at least one same finishing synthetic character
+            changes.add(Element.same(oldString, stringPos, skipped - 1));
             return changes;
         }
 
