@@ -38,7 +38,7 @@ public class Resource {
             buffer = ResourceConverter.fromBMP(name, buffer);
         }
         String ext = nameWithExt[1];
-        name = nameWithExt[0] + "." + ext;
+        name = nameWithExt[0].split("#")[0] + "." + ext;
         return new Resource(
                 typeOf(ext, buffer),
                 lang,
