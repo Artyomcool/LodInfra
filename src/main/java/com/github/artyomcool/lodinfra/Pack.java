@@ -1,5 +1,10 @@
 package com.github.artyomcool.lodinfra;
 
+import com.sun.javafx.application.PlatformImpl;
+import com.sun.javafx.stage.StageHelper;
+import javafx.application.Application;
+import javafx.stage.Stage;
+
 import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -8,6 +13,8 @@ import java.time.Instant;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Properties;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.zip.DataFormatException;
 import java.util.zip.Inflater;
 
@@ -19,6 +26,8 @@ public class Pack {
 
             if (args.length > 0 && args[0].equals("-unpack")) {
                 execUnpack(self, args[1], args[2], args[3], args[4], args[5]);
+            } else if (args.length > 0 && args[0].equals("-gui")) {
+                execGui(self, args);
             } else {
                 execPack(self, args);
             }
@@ -38,14 +47,7 @@ public class Pack {
     }
 
     private static void execPack(Path self, String... args) throws DataFormatException, IOException {
-        Properties properties = loadProperties(self);
-        for (String arg : args) {
-            if (!arg.startsWith("-P")) {
-                throw new IllegalArgumentException("Unknown argument: " + arg);
-            }
-            String[] argToValue = arg.split("[=:]");
-            properties.setProperty(argToValue[0].substring(2), argToValue.length > 1 ? argToValue[1] : "");
-        }
+        Properties properties = getArguments(self, args);
 
         String pathPattern = properties.getProperty("outputPattern");
 
@@ -106,6 +108,18 @@ public class Pack {
             c.format("Done, Press Enter to pay respect");
             c.readLine();
         }
+    }
+
+    private static Properties getArguments(Path self, String... args) throws IOException {
+        Properties properties = loadProperties(self);
+        for (String arg : args) {
+            if (!arg.startsWith("-P")) {
+                throw new IllegalArgumentException("Unknown argument: " + arg);
+            }
+            String[] argToValue = arg.split("[=:]");
+            properties.setProperty(argToValue[0].substring(2), argToValue.length > 1 ? argToValue[1] : "");
+        }
+        return properties;
     }
 
     private static Properties loadProperties(Path self) throws IOException {
@@ -209,6 +223,40 @@ public class Pack {
         }
 
         bye();
+    }
+
+    private static void execGui(Path self, String... args) throws Exception {
+        System.setProperty("prism.lcdtext", "false");
+        System.setProperty("prism.subpixeltext", "false");
+
+        Properties arguments = getArguments(self, Arrays.copyOfRange(args, 1, args.length));
+
+        AtomicReference<Throwable> error = new AtomicReference<>();
+
+        Application.launch(Gui.class);
+
+        CountDownLatch platform = new CountDownLatch(1);
+        PlatformImpl.startup(platform::countDown);
+        platform.await();
+
+        String out = arguments.getProperty("gui_out");
+
+        Gui gui = new Gui(self.resolve(out), arguments.getProperty("gui_format"));
+        gui.init();
+
+        PlatformImpl.runAndWait(() -> {
+            try {
+                Stage var2 = new Stage();
+                StageHelper.setPrimary(var2, true);
+                gui.start(new Stage());
+            } catch (Throwable t) {
+                error.set(t);
+            }
+        });
+
+        if (error.get() != null) {
+            throw new RuntimeException(error.get());
+        }
     }
 
 }

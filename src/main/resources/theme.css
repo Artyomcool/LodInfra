@@ -1,0 +1,56 @@
+.root{
+    -fx-font-size: 8pt;
+    -fx-base: rgb(220, 240, 250);
+}
+.combo-box > .list-cell {
+  -fx-text-overrun: center-ellipsis ;
+  -fx-padding: 0.333333em 0.0em 0.333333em 0.666667em;
+}
+.combo-box-base > .arrow-button {
+    -fx-padding: 0.5em 0.5em 0.5em 0.0em;
+}
+
+.bordered-titled-title {
+}
+
+.bordered-titled-border {
+  -fx-border-insets: 5 2 2 2;
+  -fx-border-color: -fx-box-border;
+}
+
+.bordered-titled-content {
+  -fx-padding: 12pt 0 0 0;
+}
+
+.tab-pane:top > .tab-header-area {
+    -fx-padding: 0.416667em 5 0.0em 6em; /* 5 2 0 5 */
+}
+
+.jfx-chip-view .jfx-chip > HBox {
+    -fx-font-family: inherit;
+    -fx-font-size: 8pt;
+    -fx-border-color: -fx-box-border;
+    -fx-border-insets: -1 -1 -1 -1;
+    -fx-background-color: linear-gradient(from 0px 0px to 0px 20pt, derive(-fx-background, 85%), derive(-fx-background, -10%));
+    -fx-background-radius: 40pt;
+    -fx-border-radius: 40pt;
+    -fx-padding: 1pt 1pt 1pt 8pt;
+    -fx-pref-height: inherit;
+    -fx-alignment: center-left;
+    -fx-spacing: 4pt;
+}
+.jfx-chip-view {
+    -fx-padding: 2pt;
+    -fx-background-color:
+        linear-gradient(from 0px 0px to 0px 4px, derive(-fx-control-inner-background, -8%), -fx-control-inner-background);
+    -fx-background-radius: 2;
+    -fx-border-color: -fx-text-box-border;
+}
+
+.jfx-chip-view .chips-pane > .text-field {
+    -fx-padding: 3pt 0 3pt 0;
+    -fx-min-width: 20pt;
+    -fx-alignment: center-left;
+    -fx-background-color: null;
+    -fx-cursor: default;
+}
