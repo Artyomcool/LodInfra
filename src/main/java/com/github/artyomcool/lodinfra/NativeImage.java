@@ -1,527 +1,226 @@
 package com.github.artyomcool.lodinfra;
 
-import com.sun.javafx.application.PlatformImpl;
+import com.oracle.svm.core.configure.ResourcesRegistry;
+import com.oracle.svm.core.jni.JNIRuntimeAccess;
+import com.sun.glass.ui.*;
+import com.sun.javafx.PlatformUtil;
+import com.sun.prism.GraphicsPipeline;
+import javafx.scene.control.Control;
 import javafx.scene.image.Image;
 import org.apache.commons.compress.archivers.zip.*;
-import org.apache.poi.ooxml.POIXMLDocument;
-import org.apache.poi.xddf.usermodel.chart.XDDFChart;
-import org.apache.poi.xdgf.xml.XDGFXMLDocumentPart;
-import org.apache.poi.xslf.usermodel.*;
-import org.apache.poi.xssf.model.*;
-import org.apache.poi.xssf.usermodel.*;
-import org.apache.poi.xwpf.usermodel.*;
-import org.apache.xmlbeans.StringEnumAbstractBase;
-import org.apache.xmlbeans.impl.schema.SchemaTypeSystemImpl;
+import org.apache.poi.POIDocument;
+import org.apache.poi.xslf.usermodel.XSLFComments;
+import org.apache.xmlbeans.impl.store.Cursor;
+import org.apache.xmlbeans.impl.store.Locale;
 import org.apache.xmlbeans.impl.store.*;
-import org.apache.xmlbeans.impl.values.StringEnumValue;
+import org.graalvm.nativeimage.ImageSingletons;
 import org.graalvm.nativeimage.hosted.Feature;
 import org.graalvm.nativeimage.hosted.RuntimeReflection;
-import org.openxmlformats.schemas.drawingml.x2006.main.impl.*;
-import org.openxmlformats.schemas.spreadsheetml.x2006.main.*;
-import org.openxmlformats.schemas.spreadsheetml.x2006.main.impl.*;
+import org.graalvm.nativeimage.impl.ConfigurationCondition;
+import org.openxmlformats.schemas.spreadsheetml.x2006.main.STCellType;
+import org.openxmlformats.schemas.spreadsheetml.x2006.main.impl.CalcChainDocumentImpl;
 
-import java.util.Arrays;
-import java.util.concurrent.CountDownLatch;
+import java.io.IOException;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+import java.nio.ByteBuffer;
+import java.util.*;
+import java.util.jar.JarEntry;
+import java.util.jar.JarInputStream;
 
 public class NativeImage implements Feature {
-    public void beforeAnalysis(BeforeAnalysisAccess access) {
-
-            Arrays.asList(
-
-                    AsiExtraField.class,
-                    X5455_ExtendedTimestamp.class,
-                    X7875_NewUnix.class,
-                    JarMarker.class,
-                    UnicodePathExtraField.class,
-                    UnicodeCommentExtraField.class,
-                    Zip64ExtendedInformationExtraField.class,
-                    X000A_NTFS.class,
-                    X0014_X509Certificates.class,
-                    X0015_CertificateIdForFile.class,
-                    X0016_CertificateIdForCentralDirectory.class,
-                    X0017_StrongEncryptionHeader.class,
-                    X0019_EncryptionRecipientCertificateList.class,
-                    ResourceAlignmentExtraField.class,
-
-                    CalcChainDocumentImpl.class,
-                    ChartsheetDocumentImpl.class,
-                    CommentsDocumentImpl.class,
-                    ExternalLinkDocumentImpl.class,
-                    MapInfoDocumentImpl.class,
-                    SingleXmlCellsDocumentImpl.class,
-                    SstDocumentImpl.class,
-                    STAxisImpl.class,
-                    STBorderIdImpl.class,
-                    STBorderStyleImpl.class,
-                    STCalcModeImpl.class,
-                    STCellCommentsImpl.class,
-                    STCellFormulaTypeImpl.class,
-                    STCellRefImpl.class,
-                    STCellStyleXfIdImpl.class,
-                    STCellTypeImpl.class,
-                    STCfTypeImpl.class,
-                    STCfvoTypeImpl.class,
-                    STConditionalFormattingOperatorImpl.class,
-                    STDataConsolidateFunctionImpl.class,
-                    STDataValidationErrorStyleImpl.class,
-                    STDataValidationOperatorImpl.class,
-                    STDataValidationTypeImpl.class,
-                    STDxfIdImpl.class,
-                    STFillIdImpl.class,
-                    STFontIdImpl.class,
-                    STFontSchemeImpl.class,
-                    STFormulaImpl.class,
-                    STHorizontalAlignmentImpl.class,
-                    STIconSetTypeImpl.class,
-                    STItemTypeImpl.class,
-                    STNumFmtIdImpl.class,
-                    STOrientationImpl.class,
-                    STPageOrderImpl.class,
-                    STPaneImpl.class,
-                    STPaneStateImpl.class,
-                    STPatternTypeImpl.class,
-                    STRefImpl.class,
-                    STSheetStateImpl.class,
-                    STSourceTypeImpl.class,
-                    STSqrefImpl.class,
-                    STTableStyleTypeImpl.class,
-                    STUnderlineValuesImpl.class,
-                    STUnsignedIntHexImpl.class,
-                    STUnsignedShortHexImpl.class,
-                    STVerticalAlignmentImpl.class,
-                    STXmlDataTypeImpl.class,
-                    StyleSheetDocumentImpl.class,
-                    TableDocumentImpl.class,
-                    WorkbookDocumentImpl.class,
-                    WorksheetDocumentImpl.class,
-
-                    XSLFComments.class,
-                    XDGFXMLDocumentPart.class,
-                    XSSFPivotTable.class,
-                    XWPFAbstractFootnotesEndnotes.class,
-                    StylesTable.class,
-                    XSLFObjectData.class,
-                    ThemesTable.class,
-                    XSSFPivotCacheDefinition.class,
-                    XSLFSheet.class,
-                    XWPFHeaderFooter.class,
-                    XSLFTheme.class,
-                    XWPFStyles.class,
-                    XSLFCommentAuthors.class,
-                    XSLFTableStyles.class,
-                    XSSFPictureData.class,
-                    XSSFVMLDrawing.class,
-                    CommentsTable.class,
-                    XSSFVBAPart.class,
-                    XSSFTable.class,
-                    XWPFSettings.class,
-                    XDDFChart.class,
-                    XSSFPivotCache.class,
-                    SingleXmlCells.class,
-                    MapInfo.class,
-                    ExternalLinksTable.class,
-                    XSSFDrawing.class,
-                    POIXMLDocument.class,
-                    XSSFSheet.class,
-                    SharedStringsTable.class,
-                    XWPFPictureData.class,
-                    XWPFNumbering.class,
-                    XSLFPictureData.class,
-                    XSSFPivotCacheRecords.class,
-                    CalculationChain.class,
-                    CTAuthorsImpl.class,
-                    CTAutoFilterImpl.class,
-                    CTBookViewImpl.class,
-                    CTBookViewsImpl.class,
-                    CTBooleanPropertyImpl.class,
-                    CTBorderImpl.class,
-                    CTBorderPrImpl.class,
-                    CTBordersImpl.class,
-                    CTBreakImpl.class,
-                    CTCacheFieldImpl.class,
-                    CTCacheFieldsImpl.class,
-                    CTCacheSourceImpl.class,
-                    CTCalcCellImpl.class,
-                    CTCalcChainImpl.class,
-                    CTCalcPrImpl.class,
-                    CTCellAlignmentImpl.class,
-                    CTCellFormulaImpl.class,
-                    CTCellImpl.class,
-                    CTCellProtectionImpl.class,
-                    CTCellStyleXfsImpl.class,
-                    CTCellXfsImpl.class,
-                    CTCfRuleImpl.class,
-                    CTCfvoImpl.class,
-                    CTChartsheetImpl.class,
-                    CTColFieldsImpl.class,
-                    CTColImpl.class,
-                    org.openxmlformats.schemas.spreadsheetml.x2006.main.impl.CTColorImpl.class,
-                    CTColorScaleImpl.class,
-                    CTColorsImpl.class,
-                    CTColsImpl.class,
-                    CTCommentImpl.class,
-                    CTCommentListImpl.class,
-                    CTCommentsImpl.class,
-                    CTConditionalFormattingImpl.class,
-                    CTDataBarImpl.class,
-                    CTDataFieldImpl.class,
-                    CTDataFieldsImpl.class,
-                    CTDataValidationImpl.class,
-                    CTDataValidationsImpl.class,
-                    CTDefinedNameImpl.class,
-                    CTDefinedNamesImpl.class,
-                    CTDialogsheetImpl.class,
-                    CTDrawingImpl.class,
-                    CTDxfImpl.class,
-                    CTDxfsImpl.class,
-                    CTExternalBookImpl.class,
-                    CTExternalDefinedNameImpl.class,
-                    CTExternalDefinedNamesImpl.class,
-                    CTExternalLinkImpl.class,
-                    CTExternalReferenceImpl.class,
-                    CTExternalReferencesImpl.class,
-                    CTExternalSheetNameImpl.class,
-                    CTExternalSheetNamesImpl.class,
-                    CTFieldImpl.class,
-                    CTFillImpl.class,
-                    CTFillsImpl.class,
-                    CTFontImpl.class,
-                    CTFontNameImpl.class,
-                    org.openxmlformats.schemas.spreadsheetml.x2006.main.impl.CTFontSchemeImpl.class,
-                    CTFontsImpl.class,
-                    CTFontSizeImpl.class,
-                    CTHeaderFooterImpl.class,
-                    org.openxmlformats.schemas.spreadsheetml.x2006.main.impl.CTHyperlinkImpl.class,
-                    CTHyperlinksImpl.class,
-                    CTIconSetImpl.class,
-                    CTIgnoredErrorImpl.class,
-                    CTIgnoredErrorsImpl.class,
-                    CTIndexedColorsImpl.class,
-                    CTIntPropertyImpl.class,
-                    CTItemImpl.class,
-                    CTItemsImpl.class,
-                    CTLegacyDrawingImpl.class,
-                    CTLocationImpl.class,
-                    CTMapImpl.class,
-                    CTMapInfoImpl.class,
-                    CTMergeCellImpl.class,
-                    CTMergeCellsImpl.class,
-                    CTNumFmtImpl.class,
-                    CTNumFmtsImpl.class,
-                    CTOleObjectImpl.class,
-                    CTOleObjectsImpl.class,
-                    CTOutlinePrImpl.class,
-                    CTPageBreakImpl.class,
-                    CTPageFieldImpl.class,
-                    CTPageFieldsImpl.class,
-                    CTPageMarginsImpl.class,
-                    CTPageSetupImpl.class,
-                    CTPageSetUpPrImpl.class,
-                    CTPaneImpl.class,
-                    CTPatternFillImpl.class,
-                    CTPhoneticPrImpl.class,
-                    CTPhoneticRunImpl.class,
-                    CTPivotCacheDefinitionImpl.class,
-                    CTPivotCacheImpl.class,
-                    CTPivotCacheRecordsImpl.class,
-                    CTPivotCachesImpl.class,
-                    CTPivotFieldImpl.class,
-                    CTPivotFieldsImpl.class,
-                    CTPivotTableDefinitionImpl.class,
-                    CTPivotTableStyleImpl.class,
-                    CTPrintOptionsImpl.class,
-                    CTREltImpl.class,
-                    CTRgbColorImpl.class,
-                    CTRowFieldsImpl.class,
-                    CTRowImpl.class,
-                    CTRPrEltImpl.class,
-                    CTRstImpl.class,
-                    CTSchemaImpl.class,
-                    CTSelectionImpl.class,
-                    CTSharedItemsImpl.class,
-                    CTSheetCalcPrImpl.class,
-                    CTSheetDataImpl.class,
-                    CTSheetDimensionImpl.class,
-                    CTSheetFormatPrImpl.class,
-                    CTSheetImpl.class,
-                    CTSheetPrImpl.class,
-                    CTSheetProtectionImpl.class,
-                    CTSheetsImpl.class,
-                    CTSheetViewImpl.class,
-                    CTSheetViewsImpl.class,
-                    CTSingleXmlCellImpl.class,
-                    CTSingleXmlCellsImpl.class,
-                    CTSstImpl.class,
-                    CTStylesheetImpl.class,
-                    CTTableColumnImpl.class,
-                    CTTableColumnsImpl.class,
-                    org.openxmlformats.schemas.spreadsheetml.x2006.main.impl.CTTableImpl.class,
-                    CTTablePartImpl.class,
-                    CTTablePartsImpl.class,
-                    CTTableStyleElementImpl.class,
-                    org.openxmlformats.schemas.spreadsheetml.x2006.main.impl.CTTableStyleImpl.class,
-                    CTTableStyleInfoImpl.class,
-                    CTTableStylesImpl.class,
-                    CTUnderlinePropertyImpl.class,
-                    CTVerticalAlignFontPropertyImpl.class,
-                    CTWorkbookImpl.class,
-                    CTWorkbookPrImpl.class,
-                    CTWorkbookProtectionImpl.class,
-                    CTWorksheetImpl.class,
-                    CTWorksheetSourceImpl.class,
-                    CTXfImpl.class,
-                    CTXmlCellPrImpl.class,
-                    CTXmlColumnPrImpl.class,
-                    CTXmlPrImpl.class,
-                    CTStylesheetImpl.class,
-                    StringEnumValue.class,
-                    StringEnumAbstractBase.class,
-                    SchemaTypeSystemImpl.class,
-                    CTAdjPoint2DImpl.class,
-                    CTAdjustHandleListImpl.class,
-                    CTAlphaModulateFixedEffectImpl.class,
-                    CTBackgroundFillStyleListImpl.class,
-                    CTBaseStylesImpl.class,
-                    CTBlipFillPropertiesImpl.class,
-                    CTBlipImpl.class,
-                    org.openxmlformats.schemas.drawingml.x2006.main.impl.CTColorImpl.class,
-                    CTColorMappingImpl.class,
-                    CTColorMappingOverrideImpl.class,
-                    CTColorSchemeImpl.class,
-                    CTConnectionImpl.class,
-                    CTConnectionSiteImpl.class,
-                    CTConnectionSiteListImpl.class,
-                    CTCustomGeometry2DImpl.class,
-                    CTDashStopImpl.class,
-                    CTDashStopListImpl.class,
-                    CTDuotoneEffectImpl.class,
-                    CTEffectContainerImpl.class,
-                    CTEffectListImpl.class,
-                    CTEffectStyleItemImpl.class,
-                    CTEffectStyleListImpl.class,
-                    CTEmptyElementImpl.class,
-                    CTFillPropertiesImpl.class,
-                    CTFillStyleListImpl.class,
-                    CTFixedPercentageImpl.class,
-                    CTFontCollectionImpl.class,
-                    CTFontReferenceImpl.class,
-                    org.openxmlformats.schemas.drawingml.x2006.main.impl.CTFontSchemeImpl.class,
-                    CTGeomGuideImpl.class,
-                    CTGeomGuideListImpl.class,
-                    CTGeomRectImpl.class,
-                    CTGradientFillPropertiesImpl.class,
-                    CTGradientStopImpl.class,
-                    CTGradientStopListImpl.class,
-                    CTGraphicalObjectDataImpl.class,
-                    CTGraphicalObjectFrameLockingImpl.class,
-                    CTGraphicalObjectImpl.class,
-                    CTGroupShapePropertiesImpl.class,
-                    CTGroupTransform2DImpl.class,
-                    CTHslColorImpl.class,
-                    org.openxmlformats.schemas.drawingml.x2006.main.impl.CTHyperlinkImpl.class,
-                    CTLinearShadePropertiesImpl.class,
-                    CTLineEndPropertiesImpl.class,
-                    CTLineJoinBevelImpl.class,
-                    CTLineJoinMiterPropertiesImpl.class,
-                    CTLineJoinRoundImpl.class,
-                    CTLinePropertiesImpl.class,
-                    CTLineStyleListImpl.class,
-                    CTNoFillPropertiesImpl.class,
-                    CTNonVisualConnectorPropertiesImpl.class,
-                    CTNonVisualDrawingPropsImpl.class,
-                    CTNonVisualDrawingShapePropsImpl.class,
-                    CTNonVisualGraphicFramePropertiesImpl.class,
-                    CTNonVisualGroupDrawingShapePropsImpl.class,
-                    CTNonVisualPicturePropertiesImpl.class,
-                    CTOfficeArtExtensionImpl.class,
-                    CTOfficeArtExtensionListImpl.class,
-                    CTOfficeStyleSheetImpl.class,
-                    CTOuterShadowEffectImpl.class,
-                    CTPath2DCloseImpl.class,
-                    CTPath2DCubicBezierToImpl.class,
-                    CTPath2DImpl.class,
-                    CTPath2DLineToImpl.class,
-                    CTPath2DListImpl.class,
-                    CTPath2DMoveToImpl.class,
-                    CTPathShadePropertiesImpl.class,
-                    CTPercentageImpl.class,
-                    CTPictureLockingImpl.class,
-                    CTPoint2DImpl.class,
-                    CTPolarAdjustHandleImpl.class,
-                    CTPositiveFixedPercentageImpl.class,
-                    CTPositivePercentageImpl.class,
-                    CTPositiveSize2DImpl.class,
-                    CTPresetColorImpl.class,
-                    CTPresetGeometry2DImpl.class,
-                    CTPresetLineDashPropertiesImpl.class,
-                    CTRegularTextRunImpl.class,
-                    CTRelativeRectImpl.class,
-                    CTScene3DImpl.class,
-                    CTSchemeColorImpl.class,
-                    CTScRgbColorImpl.class,
-                    CTShape3DImpl.class,
-                    CTShapePropertiesImpl.class,
-                    CTShapeStyleImpl.class,
-                    CTSolidColorFillPropertiesImpl.class,
-                    CTSRgbColorImpl.class,
-                    CTStretchInfoPropertiesImpl.class,
-                    CTStyleMatrixImpl.class,
-                    CTStyleMatrixReferenceImpl.class,
-                    CTSystemColorImpl.class,
-                    CTTableCellImpl.class,
-                    CTTableCellPropertiesImpl.class,
-                    CTTableColImpl.class,
-                    CTTableGridImpl.class,
-                    org.openxmlformats.schemas.drawingml.x2006.main.impl.CTTableImpl.class,
-                    CTTablePartStyleImpl.class,
-                    CTTablePropertiesImpl.class,
-                    CTTableRowImpl.class,
-                    CTTableStyleCellStyleImpl.class,
-                    org.openxmlformats.schemas.drawingml.x2006.main.impl.CTTableStyleImpl.class,
-                    CTTableStyleListImpl.class,
-                    CTTableStyleTextStyleImpl.class,
-                    CTTextAutonumberBulletImpl.class,
-                    CTTextBlipBulletImpl.class,
-                    CTTextBodyImpl.class,
-                    CTTextBodyPropertiesImpl.class,
-                    CTTextBulletColorFollowTextImpl.class,
-                    CTTextBulletSizeFollowTextImpl.class,
-                    CTTextBulletSizePercentImpl.class,
-                    CTTextBulletSizePointImpl.class,
-                    CTTextBulletTypefaceFollowTextImpl.class,
-                    CTTextCharacterPropertiesImpl.class,
-                    CTTextCharBulletImpl.class,
-                    CTTextFieldImpl.class,
-                    CTTextFontImpl.class,
-                    CTTextLineBreakImpl.class,
-                    CTTextListStyleImpl.class,
-                    CTTextNoAutofitImpl.class,
-                    CTTextNoBulletImpl.class,
-                    CTTextNormalAutofitImpl.class,
-                    CTTextParagraphImpl.class,
-                    CTTextParagraphPropertiesImpl.class,
-                    CTTextShapeAutofitImpl.class,
-                    CTTextSpacingImpl.class,
-                    CTTextSpacingPercentImpl.class,
-                    CTTextSpacingPointImpl.class,
-                    CTTextTabStopImpl.class,
-                    CTTextTabStopListImpl.class,
-                    CTTileInfoPropertiesImpl.class,
-                    CTTransform2DImpl.class,
-                    CTXYAdjustHandleImpl.class,
-                    STAdjCoordinateImpl.class,
-                    STAngleImpl.class,
-                    STBlackWhiteModeImpl.class,
-                    STColorSchemeIndexImpl.class,
-                    STCompoundLineImpl.class,
-                    STCoordinate32Impl.class,
-                    STCoordinateImpl.class,
-                    STDrawingElementIdImpl.class,
-                    STFixedPercentageImpl.class,
-                    STFontCollectionIndexImpl.class,
-                    STGeomGuideFormulaImpl.class,
-                    STGeomGuideNameImpl.class,
-                    STGuidImpl.class,
-                    STHexBinary3Impl.class,
-                    STLineCapImpl.class,
-                    STLineEndLengthImpl.class,
-                    STLineEndTypeImpl.class,
-                    STLineEndWidthImpl.class,
-                    STLineWidthImpl.class,
-                    STOnOffStyleTypeImpl.class,
-                    STPathShadeTypeImpl.class,
-                    STPenAlignmentImpl.class,
-                    STPercentageImpl.class,
-                    STPositiveCoordinate32Impl.class,
-                    STPositiveCoordinateImpl.class,
-                    STPositiveFixedAngleImpl.class,
-                    STPositiveFixedPercentageImpl.class,
-                    STPositivePercentageImpl.class,
-                    STPresetColorValImpl.class,
-                    STPresetLineDashValImpl.class,
-                    STPresetPatternValImpl.class,
-                    STRectAlignmentImpl.class,
-                    STSchemeColorValImpl.class,
-                    STShapeTypeImpl.class,
-                    STStyleMatrixColumnIndexImpl.class,
-                    STSystemColorValImpl.class,
-                    STTextAlignTypeImpl.class,
-                    STTextAnchoringTypeImpl.class,
-                    STTextAutonumberSchemeImpl.class,
-                    STTextBulletSizePercentImpl.class,
-                    STTextBulletStartAtNumImpl.class,
-                    STTextCapsTypeImpl.class,
-                    STTextFontAlignTypeImpl.class,
-                    STTextFontScalePercentImpl.class,
-                    STTextFontSizeImpl.class,
-                    STTextHorzOverflowTypeImpl.class,
-                    STTextIndentImpl.class,
-                    STTextIndentLevelTypeImpl.class,
-                    STTextLanguageIDImpl.class,
-                    STTextMarginImpl.class,
-                    STTextPointImpl.class,
-                    STTextSpacingPercentImpl.class,
-                    STTextSpacingPointImpl.class,
-                    STTextStrikeTypeImpl.class,
-                    STTextTabAlignTypeImpl.class,
-                    STTextTypefaceImpl.class,
-                    STTextUnderlineTypeImpl.class,
-                    STTextVerticalTypeImpl.class,
-                    STTextVertOverflowTypeImpl.class,
-                    STTextWrappingTypeImpl.class,
-                    STTileFlipModeImpl.class,
-                    TblStyleLstDocumentImpl.class,
-                    ThemeDocumentImpl.class,
-                    Image.class
-            ).forEach(a -> {
-                RuntimeReflection.register(a);
-                RuntimeReflection.register(a.getDeclaredConstructors());
-            });
-
-            Arrays.asList(
-                    Locale.class,
-                    Path.class,
-                    CharUtil.class,
-                    Cursor.class,
-                    Jsr173.class,
-                    Locale.class,
-                    Path.class,
-                    PathDelegate.class,
-                    Public2.class,
-                    QNameFactory.class,
-                    Query.class,
-                    QueryDelegate.class,
-                    Saaj.class,
-                    STCellType.Enum.class,
-                    schemaorg_apache_xmlbeans.system.sD023D6490046BA0250A839A9AD24C443.TypeSystemHolder.class
-            ).forEach(NativeImage::registerAll);
-
-            for (Class<?> a : Gui.class.getDeclaredClasses()) {
-                registerAll(a);
-            }
-
-            Arrays.asList(
-                    "com.sun.javafx.tk.quantum.QuantumToolkit",
-                    "com.sun.prism.j2d.J2DPipeline",
-                    "com.sun.prism.d3d.D3DPipeline",
-                    "com.sun.prism.sw.SWPipeline"
-            ).forEach(a -> {
-                Class<?> aClass;
-                try {
-                    aClass = Class.forName(a, false, getClass().getClassLoader());
-                } catch (ClassNotFoundException e) {
-                    return;
+    public void beforeAnalysis(Feature.BeforeAnalysisAccess access) {
+        ResourcesRegistry resources = ImageSingletons.lookup(ResourcesRegistry.class);
+        for (Class<?> c : Arrays.asList(POIDocument.class, XSLFComments.class, CalcChainDocumentImpl.class)) {
+            System.out.println("started " + c);
+            try (JarInputStream jarFile = new JarInputStream(c.getProtectionDomain().getCodeSource().getLocation().openStream())) {
+                while (true) {
+                    JarEntry e = jarFile.getNextJarEntry();
+                    if (e == null) {
+                        break;
+                    }
+                    if (e.isDirectory()) {
+                        continue;
+                    }
+                    String name = e.getName();
+                    if (name.endsWith(".class")) {
+                        registerConstruction(String.join(".", name.substring(0, name.length() - ".class".length()).split("/")));
+                    } else {
+                        resources.addResources(ConfigurationCondition.alwaysTrue(), name);
+                    }
                 }
-                registerAll(aClass);
-            });
 
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        }
+        for (Class<?> c : Arrays.asList(Control.class, javafx.stage.Window.class)) {
+            try (JarInputStream jarFile = new JarInputStream(c.getProtectionDomain().getCodeSource().getLocation().openStream())) {
+                System.out.println("started " + c);
+                while (true) {
+                    JarEntry e = jarFile.getNextJarEntry();
+                    if (e == null) {
+                        break;
+                    }
+                    if (e.isDirectory()) {
+                        continue;
+                    }
+                    String name = e.getName();
+                    if (name.equals("module-info.class")) {
+                        continue;
+                    }
+                    if (name.endsWith(".class")) {
+                        String cl = String.join(".", name.substring(0, name.length() - ".class".length()).split("/"));
+                        Class<?> a;
+                        try {
+                            a = Class.forName(cl, false, NativeImage.class.getClassLoader());
+                        } catch (ClassNotFoundException ex) {
+                            return;
+                        }
+                        JNIRuntimeAccess.register(a);
+                        RuntimeReflection.register(a);
+                        RuntimeReflection.register(a.getDeclaredConstructors());
+                        for (Method declaredMethod : a.getMethods()) {
+                            switch (declaredMethod.getName()) {
+                                case "getInstance":
+                                case "getPipeline":
+                                case "getFontFactory":
+                                case "getFactory":
+                                    RuntimeReflection.register(declaredMethod);
+                            }
+                        }
+                    } else {
+                        resources.addResources(ConfigurationCondition.alwaysTrue(), name);
+                    }
+                }
+
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        }
+        System.out.println("continue");
+
+        Arrays.asList(
+
+                AsiExtraField.class,
+                X5455_ExtendedTimestamp.class,
+                X7875_NewUnix.class,
+                JarMarker.class,
+                UnicodePathExtraField.class,
+                UnicodeCommentExtraField.class,
+                Zip64ExtendedInformationExtraField.class,
+                X000A_NTFS.class,
+                X0014_X509Certificates.class,
+                X0015_CertificateIdForFile.class,
+                X0016_CertificateIdForCentralDirectory.class,
+                X0017_StrongEncryptionHeader.class,
+                X0019_EncryptionRecipientCertificateList.class,
+                ResourceAlignmentExtraField.class
+        ).forEach(a -> {
+            RuntimeReflection.register(a);
+            RuntimeReflection.register(a.getDeclaredConstructors());
+        });
+
+        for (Class<?> a : Gui.class.getDeclaredClasses()) {
+            registerAll(a);
+        }
+
+        Arrays.asList(
+                ByteBuffer.class,
+                Runnable.class,
+                ArrayList.class,
+                Pixels.class,
+                Screen.class,
+                View.class,
+                Window.class,
+                Clipboard.class,
+                com.sun.glass.ui.Cursor.class,
+                Size.class,
+                Map.class,
+                HashSet.class,
+                Set.class,
+                Iterable.class,
+                Iterator.class,
+                Application.class,
+                HashMap.class,
+                String.class
+        ).forEach(NativeImage::registerAllNative);
+
+        Arrays.asList(
+                "com.sun.glass.ui.gtk.GtkPixels",
+                "com.sun.glass.ui.gtk.GtkView",
+                "com.sun.glass.ui.gtk.GtkWindow",
+                "com.sun.glass.ui.gtk.GtkCursor",
+                "com.sun.glass.ui.gtk.GtkApplication",
+                "com.sun.javafx.font.FontConfigManager$FontConfigFont",
+                "com.sun.javafx.font.FontConfigManager$FcCompFont",
+                "com.sun.prism.GraphicsPipeline"
+        ).forEach(NativeImage::registerAllNative);
     }
 
     private static void registerAll(Class<?> a) {
         RuntimeReflection.register(a);
-        RuntimeReflection.register(a.getDeclaredConstructors());
-        RuntimeReflection.register(a.getMethods());
-        RuntimeReflection.register(a.getDeclaredMethods());
-        RuntimeReflection.register(a.getDeclaredFields());
+        try {
+            RuntimeReflection.register(a.getDeclaredConstructors());
+        } catch (NoClassDefFoundError ignored) {
+        }
+        try {
+            RuntimeReflection.register(a.getMethods());
+        } catch (NoClassDefFoundError ignored) {
+        }
+        try {
+            RuntimeReflection.register(a.getDeclaredMethods());
+        } catch (NoClassDefFoundError ignored) {
+        }
+        try {
+            RuntimeReflection.register(a.getDeclaredFields());
+        } catch (NoClassDefFoundError ignored) {
+        }
+    }
+
+    private static void registerConstruction(String name) {
+        Class<?> a;
+        try {
+            a = Class.forName(name, false, NativeImage.class.getClassLoader());
+        } catch (ClassNotFoundException e) {
+            return;
+        }
+        if (a.isInterface() || Modifier.isAbstract(a.getModifiers())) {
+            return;
+        }
+        try {
+            RuntimeReflection.register(a);
+            RuntimeReflection.register(a.getConstructors());
+        } catch (NoClassDefFoundError ignored) {
+        }
+    }
+
+    private static void registerAll(String name) {
+        Class<?> a;
+        try {
+            a = Class.forName(name, false, NativeImage.class.getClassLoader());
+        } catch (ClassNotFoundException e) {
+            return;
+        }
+        registerAll(a);
+    }
+
+    private static void registerAllNative(String name) {
+        Class<?> a;
+        try {
+            a = Class.forName(name, false, NativeImage.class.getClassLoader());
+        } catch (ClassNotFoundException e) {
+            return;
+        }
+        registerAllNative(a);
+    }
+
+    private static void registerAllNative(Class<?> a) {
+        JNIRuntimeAccess.register(a);
+        JNIRuntimeAccess.register(a.getMethods());
+        JNIRuntimeAccess.register(a.getDeclaredMethods());
+        JNIRuntimeAccess.register(a.getDeclaredConstructors());
+        JNIRuntimeAccess.register(a.getDeclaredFields());
+        registerAll(a);
     }
 }

@@ -1,11 +1,14 @@
 package com.github.artyomcool.lodinfra;
 
 import com.sun.javafx.application.PlatformImpl;
+import com.sun.javafx.font.PrismFontFactory;
 import com.sun.javafx.stage.StageHelper;
+import com.sun.prism.GraphicsPipeline;
 import javafx.application.Application;
 import javafx.stage.Stage;
 
 import java.io.*;
+import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
@@ -13,7 +16,9 @@ import java.time.Instant;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Properties;
+import java.util.Random;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.zip.DataFormatException;
 import java.util.zip.Inflater;
@@ -228,12 +233,13 @@ public class Pack {
     private static void execGui(Path self, String... args) throws Exception {
         System.setProperty("prism.lcdtext", "false");
         System.setProperty("prism.subpixeltext", "false");
+        System.setProperty("prism.verbose", "true");
+        System.setProperty("jdk.gtk.verbose", "true");
+        System.getProperty("prism.debugfonts", "true");
 
         Properties arguments = getArguments(self, Arrays.copyOfRange(args, 1, args.length));
 
         AtomicReference<Throwable> error = new AtomicReference<>();
-
-        Application.launch(Gui.class);
 
         CountDownLatch platform = new CountDownLatch(1);
         PlatformImpl.startup(platform::countDown);
