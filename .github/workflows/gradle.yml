@@ -41,5 +41,5 @@ jobs:
       with:
         upload_url: ${{ needs.create-release.outputs.upload_url }}  
         asset_path: ./build/jpackage/pack-1.0.msi
-        asset_name: pack.exe
+        asset_name: pack.msi
         asset_content_type: application/octet-stream
