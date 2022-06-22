@@ -88,6 +88,9 @@ public class NativeImage implements Feature {
                         if (cl.startsWith("com.sun.glass")) {
                             registerAllNative(a);
                         }
+                        if (cl.startsWith("com.sun.prism")) {
+                            registerAllNative(a);
+                        }
                         JNIRuntimeAccess.register(a);
                         RuntimeReflection.register(a);
                         RuntimeReflection.register(a.getDeclaredConstructors());
@@ -161,14 +164,8 @@ public class NativeImage implements Feature {
         ).forEach(NativeImage::registerAllNative);
 
         Arrays.asList(
-                "com.sun.glass.ui.gtk.GtkPixels",
-                "com.sun.glass.ui.gtk.GtkView",
-                "com.sun.glass.ui.gtk.GtkWindow",
-                "com.sun.glass.ui.gtk.GtkCursor",
-                "com.sun.glass.ui.gtk.GtkApplication",
                 "com.sun.javafx.font.FontConfigManager$FontConfigFont",
                 "com.sun.javafx.font.FontConfigManager$FcCompFont",
-                "com.sun.prism.GraphicsPipeline",
                 "com.sun.javafx.font.freetype.FT_GlyphSlotRec"
         ).forEach(NativeImage::registerAllNative);
     }
