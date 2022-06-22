@@ -1,16 +1,16 @@
 plugins {
     id 'java'
     id 'application'
-    id 'com.palantir.graal' version '0.10.0'
     id 'org.openjfx.javafxplugin' version '0.0.13'
+    id "org.beryx.jlink" version "2.24.1"
 }
 
 group 'com.github.artyomcool'
-version '1.0-SNAPSHOT'
+version '1.0'
 
 java {
     toolchain {
-        languageVersion = JavaLanguageVersion.of(11)
+        languageVersion = JavaLanguageVersion.of(17)
     }
     modularity.inferModulePath = true
 }
@@ -18,28 +18,28 @@ java {
 compileJava {
     options.compilerArgs.addAll([
             '--add-exports',
-            'javafx.graphics/com.sun.javafx.stage=ALL-UNNAMED',
+            'javafx.graphics/com.sun.javafx.stage=LodInfra',
 
             '--add-exports',
-            'javafx.graphics/com.sun.javafx.application=ALL-UNNAMED',
+            'javafx.graphics/com.sun.javafx.application=LodInfra',
 
             '--add-exports',
-            'javafx.graphics/com.sun.javafx.scene.traversal=ALL-UNNAMED',
+            'javafx.graphics/com.sun.javafx.scene.traversal=LodInfra',
 
             '--add-exports',
-            'javafx.graphics/com.sun.glass.utils=ALL-UNNAMED',
+            'javafx.graphics/com.sun.glass.utils=LodInfra',
 
             '--add-exports',
-            'javafx.graphics/com.sun.glass.ui=ALL-UNNAMED',
+            'javafx.graphics/com.sun.glass.ui=LodInfra',
 
             '--add-exports',
-            'javafx.controls/com.sun.javafx.scene.control.behavior=ALL-UNNAMED',
+            'javafx.controls/com.sun.javafx.scene.control.behavior=LodInfra',
 
             '--add-exports',
-            'javafx.controls/com.sun.javafx.scene.control.inputmap=ALL-UNNAMED',
+            'javafx.controls/com.sun.javafx.scene.control.inputmap=LodInfra',
 
             '--add-exports',
-            'org.controlsfx.controls/impl.org.controlsfx.skin=ALL-UNNAMED'
+            'org.controlsfx.controls/impl.org.controlsfx.skin=LodInfra'
     ])
 }
 
@@ -57,14 +57,9 @@ dependencies {
     implementation 'org.apache.commons:commons-text:1.9'
     implementation 'ar.com.hjg:pngj:2.1.0'
 
-    implementation 'org.graalvm.nativeimage:svm:22.0.0.2'
-
-    implementation 'com.google.code.gson:gson:2.8.9'
+    implementation 'com.google.code.gson:gson:2.9.0'
     implementation 'org.controlsfx:controlsfx:11.1.1'
     implementation 'com.jfoenix:jfoenix:9.0.10'
-
-    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.8.1'
-    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.8.1'
 }
 
 javafx {
@@ -74,39 +69,58 @@ javafx {
 
 application {
     mainClass = 'com.github.artyomcool.lodinfra.Pack'
+    mainModule = 'LodInfra'
     applicationDefaultJvmArgs = [
             '--add-opens',
-            'javafx.base/com.sun.javafx.runtime=ALL-UNNAMED',
+            'javafx.base/com.sun.javafx.runtime=LodInfra',
             '--add-opens',
-            'javafx.controls/com.sun.javafx.scene.control.behavior=ALL-UNNAMED',
+            'javafx.base/com.sun.javafx.runtime=com.jfoenix',
             '--add-opens',
-            'javafx.controls/com.sun.javafx.scene.control=ALL-UNNAMED',
+            'javafx.controls/com.sun.javafx.scene.control.behavior=LodInfra',
             '--add-opens',
-            'javafx.base/com.sun.javafx.binding=ALL-UNNAMED',
+            'javafx.controls/com.sun.javafx.scene.control.behavior=com.jfoenix',
             '--add-opens',
-            'javafx.base/com.sun.javafx.event=ALL-UNNAMED',
+            'javafx.controls/com.sun.javafx.scene.control=LodInfra',
             '--add-opens',
-            'javafx.graphics/com.sun.javafx.stage=ALL-UNNAMED'
+            'javafx.controls/com.sun.javafx.scene.control=com.jfoenix',
+            '--add-opens',
+            'javafx.base/com.sun.javafx.binding=LodInfra',
+            '--add-opens',
+            'javafx.base/com.sun.javafx.binding=com.jfoenix',
+            '--add-opens',
+            'javafx.base/com.sun.javafx.event=LodInfra',
+            '--add-opens',
+            'javafx.base/com.sun.javafx.event=com.jfoenix',
+            '--add-opens',
+            'javafx.graphics/com.sun.javafx.stage=LodInfra',
+            '--add-opens',
+            'javafx.graphics/com.sun.javafx.stage=com.jfoenix',
+            '--add-opens',
+            'org.controlsfx.controls/impl.org.controlsfx.skin=LodInfra'
     ]
 }
 
-graal {
-    graalVersion '22.0.0.2'
-    outputName 'pack'
+ext.os = org.gradle.internal.os.OperatingSystem.current()
+jlink {
+    options = ['--bind-services', '--compress', '2', '--no-header-files', '--no-man-pages']
 
-    mainClass 'com.github.artyomcool.lodinfra.Pack'
+    launcher {
+        name = 'pack'
+        noConsole = false
+    }
 
-    javaVersion '11'
-    option '--no-fallback'
-    option '--allow-incomplete-classpath'
-    option '-H:+AddAllCharsets'
-    option '--features=com.github.artyomcool.lodinfra.NativeImage'
-    option '-H:IncludeResources=(.*\\.css)'
-    option '-H:+ReportExceptionStackTraces'
-    option '--verbose'
-    option '-J-Xmx16G'
-}
+    jpackage {
+        if(os.windows) {
+            installerOptions = ['--win-per-user-install', '--win-dir-chooser', '--win-menu']
+            installerType = 'msi'
+        } else {
+            installerType = 'deb'
+        }
+    }
 
-test {
-    useJUnitPlatform()
+    mergedModule {
+        requires 'java.desktop'
+    }
+
+
 }

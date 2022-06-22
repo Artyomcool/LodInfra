@@ -1,14 +1,12 @@
 package com.github.artyomcool.lodinfra;
 
-import com.sun.javafx.application.PlatformImpl;
-import com.sun.javafx.font.PrismFontFactory;
 import com.sun.javafx.stage.StageHelper;
-import com.sun.prism.GraphicsPipeline;
-import javafx.application.Application;
+import javafx.application.Platform;
 import javafx.stage.Stage;
 
 import java.io.*;
-import java.nio.ByteBuffer;
+import java.lang.invoke.MethodHandle;
+import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
@@ -16,9 +14,7 @@ import java.time.Instant;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Properties;
-import java.util.Random;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.zip.DataFormatException;
 import java.util.zip.Inflater;
@@ -242,7 +238,7 @@ public class Pack {
         AtomicReference<Throwable> error = new AtomicReference<>();
 
         CountDownLatch platform = new CountDownLatch(1);
-        PlatformImpl.startup(platform::countDown);
+        Platform.startup(platform::countDown);
         platform.await();
 
         String out = arguments.getProperty("gui_out");
@@ -250,16 +246,17 @@ public class Pack {
         Gui gui = new Gui(self.resolve(out), arguments.getProperty("gui_format"));
         gui.init();
 
-        PlatformImpl.runAndWait(() -> {
+        CountDownLatch guiStarted = new CountDownLatch(1);
+        Platform.runLater(() -> {
             try {
-                Stage var2 = new Stage();
-                StageHelper.setPrimary(var2, true);
                 gui.start(new Stage());
             } catch (Throwable t) {
                 error.set(t);
             }
+            guiStarted.countDown();
         });
 
+        guiStarted.await();
         if (error.get() != null) {
             throw new RuntimeException(error.get());
         }
