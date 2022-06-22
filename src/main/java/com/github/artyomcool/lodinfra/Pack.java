@@ -235,7 +235,7 @@ public class Pack {
         System.setProperty("prism.subpixeltext", "false");
         System.setProperty("prism.verbose", "true");
         System.setProperty("jdk.gtk.verbose", "true");
-        System.getProperty("prism.debugfonts", "true");
+        System.setProperty("prism.debugfonts", "true");
 
         Properties arguments = getArguments(self, Arrays.copyOfRange(args, 1, args.length));
 

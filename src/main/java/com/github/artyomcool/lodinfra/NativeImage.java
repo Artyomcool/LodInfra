@@ -4,7 +4,9 @@ import com.oracle.svm.core.configure.ResourcesRegistry;
 import com.oracle.svm.core.jni.JNIRuntimeAccess;
 import com.sun.glass.ui.*;
 import com.sun.javafx.PlatformUtil;
+import com.sun.javafx.font.Glyph;
 import com.sun.prism.GraphicsPipeline;
+import impl.org.controlsfx.skin.SearchableComboBoxSkin;
 import javafx.scene.control.Control;
 import javafx.scene.image.Image;
 import org.apache.commons.compress.archivers.zip.*;
@@ -31,7 +33,7 @@ import java.util.jar.JarInputStream;
 public class NativeImage implements Feature {
     public void beforeAnalysis(Feature.BeforeAnalysisAccess access) {
         ResourcesRegistry resources = ImageSingletons.lookup(ResourcesRegistry.class);
-        for (Class<?> c : Arrays.asList(POIDocument.class, XSLFComments.class, CalcChainDocumentImpl.class)) {
+        for (Class<?> c : Arrays.asList(POIDocument.class, XSLFComments.class, CalcChainDocumentImpl.class, SearchableComboBoxSkin.class)) {
             System.out.println("started " + c);
             try (JarInputStream jarFile = new JarInputStream(c.getProtectionDomain().getCodeSource().getLocation().openStream())) {
                 while (true) {
@@ -43,6 +45,9 @@ public class NativeImage implements Feature {
                         continue;
                     }
                     String name = e.getName();
+                    if (name.equals("module-info.class")) {
+                        continue;
+                    }
                     if (name.endsWith(".class")) {
                         registerConstruction(String.join(".", name.substring(0, name.length() - ".class".length()).split("/")));
                     } else {
@@ -54,7 +59,7 @@ public class NativeImage implements Feature {
                 throw new RuntimeException(e);
             }
         }
-        for (Class<?> c : Arrays.asList(Control.class, javafx.stage.Window.class)) {
+        for (Class<?> c : Arrays.asList(Control.class, javafx.stage.Window.class, Glyph.class)) {
             try (JarInputStream jarFile = new JarInputStream(c.getProtectionDomain().getCodeSource().getLocation().openStream())) {
                 System.out.println("started " + c);
                 while (true) {
@@ -77,6 +82,12 @@ public class NativeImage implements Feature {
                         } catch (ClassNotFoundException ex) {
                             return;
                         }
+                        if (cl.startsWith("com.sun.javafx.font")) {
+                            registerAllNative(a);
+                        }
+                        if (cl.startsWith("com.sun.glass")) {
+                            registerAllNative(a);
+                        }
                         JNIRuntimeAccess.register(a);
                         RuntimeReflection.register(a);
                         RuntimeReflection.register(a.getDeclaredConstructors());
@@ -86,7 +97,10 @@ public class NativeImage implements Feature {
                                 case "getPipeline":
                                 case "getFontFactory":
                                 case "getFactory":
+                                case "loadShader":
+                                case "createRenderer":
                                     RuntimeReflection.register(declaredMethod);
+                                    break;
                             }
                         }
                     } else {
@@ -154,7 +168,8 @@ public class NativeImage implements Feature {
                 "com.sun.glass.ui.gtk.GtkApplication",
                 "com.sun.javafx.font.FontConfigManager$FontConfigFont",
                 "com.sun.javafx.font.FontConfigManager$FcCompFont",
-                "com.sun.prism.GraphicsPipeline"
+                "com.sun.prism.GraphicsPipeline",
+                "com.sun.javafx.font.freetype.FT_GlyphSlotRec"
         ).forEach(NativeImage::registerAllNative);
     }
 

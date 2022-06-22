@@ -105,7 +105,7 @@ graal {
     option '-H:IncludeResources=(.*\\.css)'
     option '-H:+ReportExceptionStackTraces'
     option '--verbose'
-    option '-J-Xmx8G'
+    option '-J-Xmx16G'
 }
 
 test {
