@@ -33,7 +33,7 @@ jobs:
     - name: Set Swap Space
       uses: pierotofy/set-swap-space@master
       with:
-        swap-size-gb: 16
+        swap-size-gb: 10
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
     - name: Build native image with Gradle
@@ -80,6 +80,19 @@ jobs:
       with:
         graalvm-version: 21.2.0
         java-version: 11
+    - name:
+        Configure pagefile
+        # v1.2 (7e234852c937eea04d6ee627c599fb24a5bfffee)
+      uses: al-cheb/configure-pagefile-action@7e234852c937eea04d6ee627c599fb24a5bfffee
+      if: runner.os == 'Windows'
+      with:
+        minimum-size: 10GB
+        maximum-size: 12GB
+    - name: Set up pagefile
+      if: runner.os == 'Windows'
+      run: |
+        (Get-CimInstance Win32_PageFileUsage).AllocatedBaseSize
+      shell: pwsh
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
     - name: Build native image with Gradle
