@@ -24,10 +24,11 @@ public class Pack {
     public static void main(String[] args) throws IOException {
         try {
             Path self = Path.of(".").normalize().toAbsolutePath();
-
-            if (args.length > 0 && args[0].equals("-unpack")) {
+            if (args.length == 0) {
+                execConfig(self);
+            } else if (args[0].equals("-unpack")) {
                 execUnpack(self, args[1], args[2], args[3], args[4], args[5]);
-            } else if (args.length > 0 && args[0].equals("-gui")) {
+            } else if (args[0].equals("-gui")) {
                 execGui(self, args);
             } else {
                 execPack(self, args);
@@ -45,6 +46,10 @@ public class Pack {
                 System.in.read();
             }
         }
+    }
+
+    private static void execConfig(Path self) {
+
     }
 
     private static void execPack(Path self, String... args) throws DataFormatException, IOException {
