@@ -1,6 +1,7 @@
 package com.github.artyomcool.lodinfra;
 
 import com.sun.javafx.stage.StageHelper;
+import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.stage.Stage;
 
@@ -49,7 +50,12 @@ public class Pack {
     }
 
     private static void execConfig(Path self) {
-
+        System.setProperty("prism.lcdtext", "false");
+        System.setProperty("prism.subpixeltext", "false");
+        System.setProperty("prism.verbose", "true");
+        System.setProperty("jdk.gtk.verbose", "true");
+        System.setProperty("prism.debugfonts", "true");
+        Application.launch(ConfigGui.class);
     }
 
     private static void execPack(Path self, String... args) throws DataFormatException, IOException {
