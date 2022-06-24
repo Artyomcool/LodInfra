@@ -3,6 +3,7 @@ module LodInfra {
     requires com.jfoenix;
     requires org.controlsfx.controls;
     requires org.apache.commons.text;
+    requires jdk.localedata;
 
     opens com.github.artyomcool.lodinfra;
 }
