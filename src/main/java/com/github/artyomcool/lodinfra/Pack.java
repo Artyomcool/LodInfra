@@ -52,9 +52,6 @@ public class Pack {
     private static void execConfig(Path self) {
         System.setProperty("prism.lcdtext", "false");
         System.setProperty("prism.subpixeltext", "false");
-        System.setProperty("prism.verbose", "true");
-        System.setProperty("jdk.gtk.verbose", "true");
-        System.setProperty("prism.debugfonts", "true");
         Application.launch(ConfigGui.class);
     }
 
@@ -240,9 +237,6 @@ public class Pack {
     private static void execGui(Path self, String... args) throws Exception {
         System.setProperty("prism.lcdtext", "false");
         System.setProperty("prism.subpixeltext", "false");
-        System.setProperty("prism.verbose", "true");
-        System.setProperty("jdk.gtk.verbose", "true");
-        System.setProperty("prism.debugfonts", "true");
 
         Properties arguments = getArguments(self, Arrays.copyOfRange(args, 1, args.length));
 

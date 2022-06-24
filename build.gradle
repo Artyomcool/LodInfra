@@ -101,7 +101,7 @@ application {
 }
 
 jlink {
-    options = ['--compress=2', '--no-header-files', '--no-man-pages']
+    options = ['--compress=2', '--no-header-files', '--no-man-pages', '--include-locales=en,ru']
 
     launcher {
         name = 'pack'
