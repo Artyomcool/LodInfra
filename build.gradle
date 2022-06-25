@@ -68,37 +68,39 @@ javafx {
     modules = ['javafx.graphics','javafx.controls']
 }
 
+def opens = [
+        '--add-opens',
+        'javafx.base/com.sun.javafx.runtime=LodInfra',
+        '--add-opens',
+        'javafx.base/com.sun.javafx.runtime=com.jfoenix',
+        '--add-opens',
+        'javafx.controls/com.sun.javafx.scene.control.behavior=LodInfra',
+        '--add-opens',
+        'javafx.controls/com.sun.javafx.scene.control.behavior=com.jfoenix',
+        '--add-opens',
+        'javafx.controls/com.sun.javafx.scene.control=LodInfra',
+        '--add-opens',
+        'javafx.controls/com.sun.javafx.scene.control=com.jfoenix',
+        '--add-opens',
+        'javafx.base/com.sun.javafx.binding=LodInfra',
+        '--add-opens',
+        'javafx.base/com.sun.javafx.binding=com.jfoenix',
+        '--add-opens',
+        'javafx.base/com.sun.javafx.event=LodInfra',
+        '--add-opens',
+        'javafx.base/com.sun.javafx.event=com.jfoenix',
+        '--add-opens',
+        'javafx.graphics/com.sun.javafx.stage=LodInfra',
+        '--add-opens',
+        'javafx.graphics/com.sun.javafx.stage=com.jfoenix',
+        '--add-opens',
+        'org.controlsfx.controls/impl.org.controlsfx.skin=LodInfra'
+]
+
 application {
     mainClass = 'com.github.artyomcool.lodinfra.Pack'
     mainModule = 'LodInfra'
-    applicationDefaultJvmArgs = [
-            '--add-opens',
-            'javafx.base/com.sun.javafx.runtime=LodInfra',
-            '--add-opens',
-            'javafx.base/com.sun.javafx.runtime=com.jfoenix',
-            '--add-opens',
-            'javafx.controls/com.sun.javafx.scene.control.behavior=LodInfra',
-            '--add-opens',
-            'javafx.controls/com.sun.javafx.scene.control.behavior=com.jfoenix',
-            '--add-opens',
-            'javafx.controls/com.sun.javafx.scene.control=LodInfra',
-            '--add-opens',
-            'javafx.controls/com.sun.javafx.scene.control=com.jfoenix',
-            '--add-opens',
-            'javafx.base/com.sun.javafx.binding=LodInfra',
-            '--add-opens',
-            'javafx.base/com.sun.javafx.binding=com.jfoenix',
-            '--add-opens',
-            'javafx.base/com.sun.javafx.event=LodInfra',
-            '--add-opens',
-            'javafx.base/com.sun.javafx.event=com.jfoenix',
-            '--add-opens',
-            'javafx.graphics/com.sun.javafx.stage=LodInfra',
-            '--add-opens',
-            'javafx.graphics/com.sun.javafx.stage=com.jfoenix',
-            '--add-opens',
-            'org.controlsfx.controls/impl.org.controlsfx.skin=LodInfra'
-    ]
+    applicationDefaultJvmArgs += opens
 }
 
 jlink {
@@ -107,6 +109,7 @@ jlink {
     launcher {
         name = 'pack'
         noConsole = false
+        jvmArgs += opens
     }
 
     mergedModule {
