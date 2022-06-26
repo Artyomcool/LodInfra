@@ -236,8 +236,8 @@ public class Gui extends Application {
                 functions.put("always", objects -> true);
                 functions.put("contains", objects -> {
                     for (Object object : objects) {
-                        if (text.data.contains(string(objects.get(0)))) {
-                            return object;
+                        if (text.data.contains(string(object))) {
+                            return true;
                         }
                     }
                     return false;
@@ -276,22 +276,24 @@ public class Gui extends Application {
                         String key = entry.getKey();
                         if (key.startsWith("$")) {
                             key = key.substring(1);
-                            if ((boolean) Interpreter.eval(key, params, functions)) {
-                                Term term = entry.getValue();
-                                if (term.action != null) {
-                                    Interpreter.eval(term.action, params, functions);
-                                }
-                                if (term.push != null) {
-                                    processors.push(term.push);
-                                }
-                                text.pos += len[0];
-                                break;
+                            if (!((boolean) Interpreter.eval(key, params, functions))) {
+                                continue;
                             }
+                        } else if (text.data.startsWith(key, text.pos)) {
+                            len[0] = key.length();
+                        } else {
+                            continue;
                         }
-                        if (text.data.startsWith(key, text.pos)) {
-                            text.pos += key.length();
-                            break;
+
+                        Term term = entry.getValue();
+                        if (term.action != null) {
+                            Interpreter.eval(term.action, params, functions);
                         }
+                        if (term.push != null) {
+                            processors.push(term.push);
+                        }
+                        text.pos += len[0];
+                        break;
                     }
                 }
 
@@ -826,6 +828,7 @@ public class Gui extends Application {
                         params.put("i", i++);
                         writeWithPath(serialized, params, obj, path, fullPath);
                     }
+                    forPut(path, params, serialized, fullPath);
                 } else {
                     writeWithPath(serialized, params, ((Map) data).get(alias), path, fullPath);
                 }
