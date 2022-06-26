@@ -35,6 +35,7 @@ import org.controlsfx.control.textfield.CustomTextField;
 
 import java.io.*;
 import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
@@ -1563,7 +1564,7 @@ public class Gui extends Application {
                 fileChooser.setTitle("Save Resource File");
                 File file = fileChooser.showSaveDialog(primaryStage);
 
-                try (OutputStreamWriter writer = new FileWriter(file)) {
+                try (OutputStreamWriter writer = new FileWriter(file, StandardCharsets.UTF_8)) {
                     gson.toJson(toSerialize, writer);
                 } catch (IOException e) {
                     throw new RuntimeException(e);
@@ -1576,7 +1577,7 @@ public class Gui extends Application {
                 FileChooser fileChooser = new FileChooser();
                 fileChooser.setTitle("Open Resource File");
                 File file = fileChooser.showOpenDialog(primaryStage);
-                try (InputStreamReader input = new FileReader(file)) {
+                try (InputStreamReader input = new FileReader(file, StandardCharsets.UTF_8)) {
                     Object p = gson.fromJson(input, Object.class);
                     toSerialize.clear();
                     initTabs(p, null, toSerialize, root);
