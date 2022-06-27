@@ -429,7 +429,12 @@ public class Gui extends Application {
                 if (parsed instanceof List) {
                     switch (p[i]) {
                         case "i64": {
-                            int t = Integer.parseInt(p[++i]);
+                            String[] withDefault = p[++i].split("\\?");
+                            int t = Integer.parseInt(withDefault[0]);
+                            if (((List<?>) parsed).size() <= t) {
+                                parsed = withDefault.length == 1 ? null : withDefault[1];
+                                continue;
+                            }
 
                             long v2 = 0xffffffffL & intFromList((List<Integer>) parsed, t);
                             long v1 = 0xffffffffL & intFromList((List<Integer>) parsed, t + 4);
@@ -438,12 +443,22 @@ public class Gui extends Application {
                         }
                         continue;
                         case "i32": {
-                            int t = Integer.parseInt(p[++i]);
+                            String[] withDefault = p[++i].split("\\?");
+                            int t = Integer.parseInt(withDefault[0]);
+                            if (((List<?>) parsed).size() <= t) {
+                                parsed = withDefault.length == 1 ? null : withDefault[1];
+                                continue;
+                            }
                             parsed = String.valueOf(intFromList((List<Integer>) parsed, t));
                         }
                         continue;
                         case "i16": {
-                            int t = Integer.parseInt(p[++i]);
+                            String[] withDefault = p[++i].split("\\?");
+                            int t = Integer.parseInt(withDefault[0]);
+                            if (((List<?>) parsed).size() <= t) {
+                                parsed = withDefault.length == 1 ? null : withDefault[1];
+                                continue;
+                            }
 
                             int v2 = (int) ((List<?>) parsed).get(t++);
                             int v1 = (int) ((List<?>) parsed).get(t++);
@@ -452,12 +467,13 @@ public class Gui extends Application {
                         }
                         continue;
                         case "i8":
-                            int index = Integer.parseInt(p[++i]);
-                            if (((List<?>) parsed).size() <= index) {
-                                parsed = null;
+                            String[] withDefault = p[++i].split("\\?");
+                            int t = Integer.parseInt(withDefault[0]);
+                            if (((List<?>) parsed).size() <= t) {
+                                parsed = withDefault.length == 1 ? null : withDefault[1];
                                 continue;
                             }
-                            parsed = String.valueOf(((List<?>) parsed).get(index));
+                            parsed = String.valueOf(((List<?>) parsed).get(t));
                             continue;
                     }
                 }
@@ -675,7 +691,7 @@ public class Gui extends Application {
                         case "i32":
                         case "i16":
                         case "i8":
-                            return forListNum((List) serialized, t, Integer.parseInt(pathParts[++i]));
+                            return forListNum((List) serialized, t, Integer.parseInt(pathParts[++i].split("\\?")[0]));
                     }
 
                     int index = Integer.parseInt(withProcessor[0]);
@@ -1302,28 +1318,33 @@ public class Gui extends Application {
                     }
                     textField.setPrefColumnCount(32);
 
-                    StringProperty property = new SimpleStringProperty();
-                    property.bindBidirectional(textField.textProperty(), new StringConverter<>() {
+
+                    Property<Object> obj = context.currentProperty();
+                    textField.textProperty().bindBidirectional(obj, new StringConverter<Object>() {
                         @Override
-                        public String toString(String object) {
-                            StringBuilder r = new StringBuilder();
-                            for (int i = 0; i < object.length(); i += 2) {
-                                int c = Integer.parseUnsignedInt(object, i, i + 2, 16);
-                                r.append((char) c);
+                        public String toString(Object object) {
+                            List<Integer> lst = (List)object;
+                            byte[] r = new byte[lst.size() / 2];
+                            for (Integer i : lst) {
+                                r[i] = i.byteValue();
                             }
-                            return r.toString();
+                            try {
+                                return new String(r, "windows-1251");
+                            } catch (UnsupportedEncodingException e) {
+                                throw new RuntimeException(e);
+                            }
                         }
 
                         @Override
-                        public String fromString(String string) {
-                            StringBuilder r = new StringBuilder();
-                            for (int i = 0; i < string.length(); i++) {
-                                r.append(Integer.toHexString(string.charAt(i)));
+                        public Object fromString(String string) {
+                            List<Integer> t = new ArrayList<>();
+                            for (int i = 0; i < string.length(); i += 2) {
+                                int c = Integer.parseUnsignedInt(string, i, i + 2, 16);
+                                t.add(c);
                             }
-                            return r.toString();
+                            return t;
                         }
                     });
-                    context.addProperty(property);
 
                     textField.setPrefRowCount(8);
                     pane.getChildren().add(label);

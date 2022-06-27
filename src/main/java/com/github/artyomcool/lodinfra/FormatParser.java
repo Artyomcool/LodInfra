@@ -184,7 +184,7 @@ public class FormatParser {
                 byte[] c = s.getBytes(Charset.forName("windows-1251"));
                 List lst = new ArrayList();
                 for (byte b : c) {
-                    lst.add((int) b);
+                    lst.add(b & 0xff);
                 }
                 return lst;
             }
