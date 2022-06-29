@@ -42,6 +42,7 @@ import java.util.*;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.prefs.Preferences;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -1016,6 +1017,7 @@ public class Gui extends Application {
     }
 
     Insets padding = new Insets(2, 2, 2, 2);
+    Preferences prefs = Preferences.userRoot().node(this.getClass().getName());
 
     private List<Node> parse(Field field, Context context) {
         context.push(field);
@@ -1575,30 +1577,70 @@ public class Gui extends Application {
 
     @Override
     public void start(Stage primaryStage) {
+        // This will define a node in which the preferences can be stored
+        String ID1 = "Test1";
+        String ID2 = "Test2";
+        String ID3 = "Test3";
+
+        // First we will get the values
+        // Define a boolean value
+        System.out.println(prefs.getBoolean(ID1, true));
+        // Define a string with default "Hello World
+        System.out.println(prefs.get(ID2, "Hello World"));
+        // Define a integer with default 50
+        System.out.println(prefs.getInt(ID3, 50));
+
+        // now set the values
+        prefs.putBoolean(ID1, false);
+        prefs.put(ID2, "Hello Europa");
+        prefs.putInt(ID3, 45);
+
+        // Delete the preference settings for the first value
+        prefs.remove(ID1);
+
         try {
             primaryStage.setTitle("Data Editor");
             StackPane root = new StackPane();
 
             MenuButton fileMenu = new MenuButton("File");
-            MenuItem save = new MenuItem("Save");
+            MenuItem save = new MenuItem("Save JSON");
             save.setAccelerator(KeyCombination.valueOf("Ctrl+S"));
             save.setOnAction(event -> {
                 FileChooser fileChooser = new FileChooser();
                 fileChooser.setTitle("Save Resource File");
-                File file = fileChooser.showSaveDialog(primaryStage);
+                fileChooser.setSelectedExtensionFilter(new FileChooser.ExtensionFilter("JSON files", "json"));
 
+                String initial = prefs.get("file-json", null);
+                if (initial != null) {
+                    File initialFile = new File(initial);
+                    fileChooser.setInitialDirectory(initialFile.getParentFile());
+                    fileChooser.setInitialFileName(initialFile.getName());
+                }
+
+                File file = fileChooser.showSaveDialog(primaryStage);
                 try (OutputStreamWriter writer = new FileWriter(file, StandardCharsets.UTF_8)) {
                     gson.toJson(toSerialize, writer);
                 } catch (IOException e) {
                     throw new RuntimeException(e);
                 }
+
+                prefs.put("file-json", file.getAbsolutePath());
             });
             fileMenu.getItems().add(save);
-            MenuItem open = new MenuItem("Open");
+            MenuItem open = new MenuItem("Open JSON");
             open.setAccelerator(KeyCombination.valueOf("Ctrl+O"));
             open.setOnAction(event -> {
                 FileChooser fileChooser = new FileChooser();
                 fileChooser.setTitle("Open Resource File");
+                fileChooser.setSelectedExtensionFilter(new FileChooser.ExtensionFilter("JSON files", "json"));
+
+                String initial = prefs.get("file-json", null);
+                if (initial != null) {
+                    File initialFile = new File(initial);
+                    fileChooser.setInitialDirectory(initialFile.getParentFile());
+                    fileChooser.setInitialFileName(initialFile.getName());
+                }
+
                 File file = fileChooser.showOpenDialog(primaryStage);
                 try (InputStreamReader input = new FileReader(file, StandardCharsets.UTF_8)) {
                     Object p = gson.fromJson(input, Object.class);
@@ -1607,13 +1649,24 @@ public class Gui extends Application {
                 } catch (IOException e) {
                     throw new RuntimeException(e);
                 }
+
+                prefs.put("file-json", file.getAbsolutePath());
             });
             fileMenu.getItems().add(open);
-            MenuItem export = new MenuItem("Export");
+            MenuItem export = new MenuItem("Export DAT");
             export.setAccelerator(KeyCombination.valueOf("Shift+Ctrl+S"));
             export.setOnAction(event -> {
                 FileChooser fileChooser = new FileChooser();
                 fileChooser.setTitle("Export Resource File");
+                fileChooser.setSelectedExtensionFilter(new FileChooser.ExtensionFilter("DAT files", "dat"));
+
+                String initial = prefs.get("file-dat", null);
+                if (initial != null) {
+                    File initialFile = new File(initial);
+                    fileChooser.setInitialDirectory(initialFile.getParentFile());
+                    fileChooser.setInitialFileName(initialFile.getName());
+                }
+
                 File file = fileChooser.showSaveDialog(primaryStage);
                 Object serialized = new HashMap<>();
 
@@ -1628,15 +1681,25 @@ public class Gui extends Application {
                 try (DataOutputStream out = new DataOutputStream(new FileOutputStream(file))) {
                     FormatParser.write(out, serialized, format.template, format.structs);
                 } catch (Exception e) {
-                    e.printStackTrace();
+                    throw new RuntimeException(e);
                 }
+
+                prefs.put("file-dat", file.getAbsolutePath());
             });
             fileMenu.getItems().add(export);
-            MenuItem _import = new MenuItem("Import");
+            MenuItem _import = new MenuItem("Import DAT");
             _import.setAccelerator(KeyCombination.valueOf("Shift+Ctrl+O"));
             _import.setOnAction(event -> {
                 FileChooser fileChooser = new FileChooser();
                 fileChooser.setTitle("Import Resource File");
+                fileChooser.setSelectedExtensionFilter(new FileChooser.ExtensionFilter("DAT files", "dat"));
+                String initial = prefs.get("file-dat", null);
+                if (initial != null) {
+                    File initialFile = new File(initial);
+                    fileChooser.setInitialDirectory(initialFile.getParentFile());
+                    fileChooser.setInitialFileName(initialFile.getName());
+                }
+
                 File file = fileChooser.showOpenDialog(primaryStage);
                 Object p;
                 Format f = ui.formats.get("dat");
@@ -1648,6 +1711,7 @@ public class Gui extends Application {
                 } catch (IOException e) {
                     throw new RuntimeException(e);
                 }
+                prefs.put("file-dat", file.getAbsolutePath());
             });
             fileMenu.getItems().add(_import);
 

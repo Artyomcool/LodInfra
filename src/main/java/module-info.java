@@ -4,6 +4,7 @@ module LodInfra {
     requires org.controlsfx.controls;
     requires org.apache.commons.text;
     requires jdk.localedata;
+    requires java.prefs;
 
     opens com.github.artyomcool.lodinfra;
 }
