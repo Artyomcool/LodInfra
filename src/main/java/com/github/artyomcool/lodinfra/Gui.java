@@ -1323,20 +1323,22 @@ public class Gui extends Application {
                     textField.textProperty().bindBidirectional(obj, new StringConverter<Object>() {
                         @Override
                         public String toString(Object object) {
+                            if (object == null) {
+                                return "<NULL>";
+                            }
                             List<Integer> lst = (List)object;
-                            byte[] r = new byte[lst.size() / 2];
-                            for (Integer i : lst) {
-                                r[i] = i.byteValue();
+                            StringBuilder result = new StringBuilder();
+                            for (int i = 0; i < lst.size(); i++) {
+                                result.append(Integer.toHexString(i));
                             }
-                            try {
-                                return new String(r, "windows-1251");
-                            } catch (UnsupportedEncodingException e) {
-                                throw new RuntimeException(e);
-                            }
+                            return result.toString();
                         }
 
                         @Override
                         public Object fromString(String string) {
+                            if (string.equals("<NULL>")) {
+                                return null;
+                            }
                             List<Integer> t = new ArrayList<>();
                             for (int i = 0; i < string.length(); i += 2) {
                                 int c = Integer.parseUnsignedInt(string, i, i + 2, 16);
