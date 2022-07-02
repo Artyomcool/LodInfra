@@ -248,7 +248,7 @@ public class Pack {
 
         String out = arguments.getProperty("gui_out");
 
-        Gui gui = new Gui(self.resolve(out), arguments.getProperty("gui_format"));
+        Gui gui = new Gui(self.resolve(out));
         gui.init();
 
         CountDownLatch guiStarted = new CountDownLatch(1);

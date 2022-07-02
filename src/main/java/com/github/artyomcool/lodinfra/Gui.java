@@ -13,6 +13,7 @@ import javafx.beans.property.SimpleStringProperty;
 import javafx.beans.property.StringProperty;
 import javafx.beans.value.ChangeListener;
 import javafx.beans.value.ObservableValue;
+import javafx.collections.FXCollections;
 import javafx.collections.ListChangeListener;
 import javafx.event.EventHandler;
 import javafx.geometry.Insets;
@@ -27,6 +28,7 @@ import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyCombination;
 import javafx.scene.input.MouseEvent;
 import javafx.scene.layout.*;
+import javafx.scene.paint.Color;
 import javafx.scene.text.Font;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
@@ -1021,6 +1023,7 @@ public class Gui extends Application {
 
     private List<Node> parse(Field field, Context context) {
         context.push(field);
+        String path = String.join("/", context.path);
         try {
             switch (field.type) {
                 case nothing:
@@ -1045,57 +1048,136 @@ public class Gui extends Application {
                     String countGroup = evalString(group[group.length - 1], context.params(), stdFunctions);
                     boolean allowAdd;
                     int count;
-                    Object contextValue = context.currentValue();
+                    List<Object> contextValue = (List<Object>) context.currentValue();
                     if (countGroup.isEmpty()) {
-                        count = ((List) contextValue).size();
+                        count = contextValue.size();
                         allowAdd = true;
                     } else {
                         count = Integer.parseInt(countGroup);
                         allowAdd = false;
                     }
+                    Context.State savedState = context.state();
                     int start = group.length > 1 ? Integer.parseInt(group[0]) : 0;
-                    List<Node> r = new ArrayList<>(count);
-                    for (int j = 0, i = start; i < count; i++, j++) {
-                        Map<String, Object> vars = new HashMap<>();
-                        vars.put("i", (long) i);
-                        vars.put("j", (long) j);
-                        context.push(String.valueOf(i), vars);
-                        if (field.fields != null) {
-                            for (Field f : field.fields) {
-                                List<Node> parse = parse(f, context);
+                    if ("long".equals(field.option)) {
+                        List<Context.State> data = new ArrayList<>();
+                        for (int j = 0, i = start; i < count; i++, j++) {
+                            Map<String, Object> vars = new HashMap<>();
+                            vars.put("i", (long) i);
+                            vars.put("j", (long) j);
+                            context.push(String.valueOf(i), vars);
+                            data.add(context.state());
+                            context.pop();
+                        }
+
+                        ListView<Context.State> listView = new ListView<>(FXCollections.observableList(data));
+                        VBox.setVgrow(listView, Priority.ALWAYS);
+                        listView.setCellFactory(p -> new ListCell<>() {
+                            @Override
+                            protected void updateItem(Context.State item, boolean empty) {
+                                super.updateItem(item, empty);
+                                if (empty) {
+                                    return;
+                                }
+
+                                VBox group = new VBox();
+                                if (field.fields != null) {
+                                    for (Field f : field.fields) {
+                                        Context.State state = item.swap();
+                                        List<Node> parse = parse(f, context);
+                                        state.restore();
+                                        for (Node node : parse) {
+                                            node.getProperties().put("field", f);
+                                            group.getChildren().add(node);
+                                        }
+                                    }
+                                }
+                                if (link != null) {
+                                    Context.State state = item.swap();
+                                    List<Node> parse = parse(link, context);
+                                    state.restore();
+                                    for (Node node : parse) {
+                                        node.getProperties().put("field", link);
+                                        group.getChildren().add(node);
+                                    }
+                                }
+                                setGraphic(group);
+                                group.setBackground(new Background(new BackgroundFill(Color.ALICEBLUE, null, null)));
+                            }
+                        });
+                        List<Node> r = new ArrayList<>();
+                        r.add(listView);
+                        if (allowAdd) {
+                            Button e = new Button();
+                            e.setText("+");
+                            e.setOnAction(a -> {
+                                Map<String, Object> vars = new HashMap<>();
+                                int i = listView.getItems().size() + start;
+                                vars.put("i", (long) i);
+                                vars.put("j", (long) listView.getItems().size());
+                                Context.State swap = savedState.swap();
+                                context.push(String.valueOf(i), vars);
+                                context.set(new HashMap<>());
+                                listView.getItems().add(context.state());
+                                swap.restore();
+                            });
+
+                            Button q = new Button();
+                            q.setText("-");
+
+                            ButtonBar bar = new ButtonBar();
+                            Field f = new Field();
+                            f.fillWidth = true;
+                            bar.getButtons().add(e);
+                            bar.getButtons().add(q);
+                            bar.getProperties().put("field", f);
+                            bar.setPadding(padding);
+                            r.add(bar);
+                        }
+                        return r;
+                    } else {
+                        List<Node> r = new ArrayList<>(count);
+                        for (int j = 0, i = start; i < count; i++, j++) {
+                            Map<String, Object> vars = new HashMap<>();
+                            vars.put("i", (long) i);
+                            vars.put("j", (long) j);
+                            context.push(String.valueOf(i), vars);
+                            if (field.fields != null) {
+                                for (Field f : field.fields) {
+                                    List<Node> parse = parse(f, context);
+                                    for (Node node : parse) {
+                                        node.getProperties().put("field", f);
+                                        r.add(node);
+                                    }
+                                }
+                            }
+                            if (link != null) {
+                                List<Node> parse = parse(link, context);
                                 for (Node node : parse) {
-                                    node.getProperties().put("field", f);
+                                    node.getProperties().put("field", link);
                                     r.add(node);
                                 }
                             }
+                            context.pop();
                         }
-                        if (link != null) {
-                            List<Node> parse = parse(link, context);
-                            for (Node node : parse) {
-                                node.getProperties().put("field", link);
-                                r.add(node);
-                            }
+                        if (allowAdd) {
+                            Button e = new Button();
+                            e.setText("+");
+                            e.setOnAction(a -> contextValue.add(new HashMap<>()));
+
+                            Button q = new Button();
+                            q.setText("-");
+
+                            ButtonBar bar = new ButtonBar();
+                            Field f = new Field();
+                            f.fillWidth = true;
+                            bar.getButtons().add(e);
+                            bar.getButtons().add(q);
+                            bar.getProperties().put("field", f);
+                            bar.setPadding(padding);
+                            r.add(bar);
                         }
-                        context.pop();
+                        return r;
                     }
-                    if (allowAdd) {
-                        Button e = new Button();
-                        e.setText("+");
-                        e.setOnAction(a -> ((List) contextValue).add(new HashMap<>()));
-
-                        Button q = new Button();
-                        q.setText("-");
-
-                        ButtonBar bar = new ButtonBar();
-                        Field f = new Field();
-                        f.fillWidth = true;
-                        bar.getButtons().add(e);
-                        bar.getButtons().add(q);
-                        bar.getProperties().put("field", f);
-                        bar.setPadding(padding);
-                        r.add(bar);
-                    }
-                    return r;
                 }
                 case group: {
                     if ("tiny".equals(field.option) || "tinyNoWrap".equals(field.option)) {
@@ -1482,7 +1564,7 @@ public class Gui extends Application {
             }
             throw new IllegalStateException();
         } catch (Exception e) {
-            throw new RuntimeException("Field: " + String.join("/", context.path), e);
+            throw new RuntimeException("Field: " + path, e);
         } finally {
             context.pop(field);
         }
@@ -1513,7 +1595,7 @@ public class Gui extends Application {
                 if (f == null) {
                     f = field;
                 }
-                if (f.fillWidth || field.fillWidth) {
+                if (VBox.getVgrow(node) == Priority.ALWAYS || f.fillWidth || field.fillWidth) {
                     if (!currentFlow.getChildren().isEmpty()) {
                         content.getChildren().add(currentFlow);
                         currentFlow = createFlow();
@@ -1540,7 +1622,7 @@ public class Gui extends Application {
 
     private Map<String, List<Value>> dynamicEnums;
 
-    public Gui(Path cfg, String format) throws IOException {
+    public Gui(Path cfg) throws IOException {
         try (Reader reader = Files.newBufferedReader(cfg)) {
             ui = gson.fromJson(reader, Ui.class);
         }
@@ -1549,7 +1631,7 @@ public class Gui extends Application {
                 alias.processors = value.processors;
             }
         }
-        this.format = ui.formats.get(format);
+        this.format = ui.formats.get("dat");
     }
 
 
@@ -1707,7 +1789,6 @@ public class Gui extends Application {
                     p = FormatParser.parse(dataInputStream, f.template, f.structs);
                     toSerialize.clear();
                     initTabs(p, f, toSerialize, root);
-                    primaryStage.sizeToScene();
                 } catch (IOException e) {
                     throw new RuntimeException(e);
                 }
@@ -1722,10 +1803,9 @@ public class Gui extends Application {
             StackPane.setMargin(fileMenu, padding);
             root.getChildren().add(fileMenu);
 
+            primaryStage.setMinWidth(1024);
+            primaryStage.setMinHeight(800);
             primaryStage.setScene(scene);
-            primaryStage.setMinWidth(600);
-            primaryStage.setMinHeight(400);
-            primaryStage.sizeToScene();
             primaryStage.show();
         } catch (Exception e) {
             e.printStackTrace();
@@ -2424,8 +2504,15 @@ public class Gui extends Application {
                 p = split[0];
                 int t = Integer.parseInt(p);
                 List lst = (List) d;
+                while (lst.size() <= t) {
+                    lst.add(null);
+                }
                 lst.set(t, value);
             }
+        }
+
+        void set(Object value) {
+            set(data, path(this).split("/"), value);
         }
 
         public Object currentValue() {
@@ -2529,6 +2616,35 @@ public class Gui extends Application {
 
         public Map<String, Field> structs() {
             return ui.structs;
+        }
+
+        public State state() {
+            return new State(vars, path);
+        }
+
+        class State {
+
+            final Deque<Map<String, ?>> vars;
+            final Deque<String> path;
+
+            State(Deque<Map<String, ?>> vars, Deque<String> path) {
+                this.vars = new ArrayDeque<>(vars);
+                this.path = new ArrayDeque<>(path);
+            }
+
+            State swap() {
+                State tmp = new State(Context.this.vars, Context.this.path);
+                restore();
+                return tmp;
+            }
+
+            void restore() {
+                Context.this.vars.clear();
+                Context.this.vars.addAll(vars);
+                Context.this.path.clear();
+                Context.this.path.addAll(path);
+            }
+
         }
     }
 
