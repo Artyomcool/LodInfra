@@ -1,13 +1,11 @@
 package com.github.artyomcool.lodinfra;
 
-import com.sun.javafx.stage.StageHelper;
+import com.github.artyomcool.lodinfra.ui.Gui;
 import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.stage.Stage;
 
 import java.io.*;
-import java.lang.invoke.MethodHandle;
-import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;

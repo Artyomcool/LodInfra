@@ -1,4 +1,4 @@
-package com.github.artyomcool.lodinfra;
+package com.github.artyomcool.lodinfra.data;
 
 import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
@@ -6,7 +6,6 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.nio.charset.Charset;
 import java.util.*;
-import java.util.stream.Collectors;
 
 public class FormatParser {
 

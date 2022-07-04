@@ -7,4 +7,7 @@ module LodInfra {
     requires java.prefs;
 
     opens com.github.artyomcool.lodinfra;
+    opens com.github.artyomcool.lodinfra.data;
+    opens com.github.artyomcool.lodinfra.ui;
+    opens com.github.artyomcool.lodinfra.data.dto;
 }

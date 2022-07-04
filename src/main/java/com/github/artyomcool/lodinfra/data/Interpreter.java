@@ -1,4 +1,4 @@
-package com.github.artyomcool.lodinfra;
+package com.github.artyomcool.lodinfra.data;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -8,6 +8,16 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 public class Interpreter {
+
+    private final Map<String, Function<List<Object>, Object>> functions;
+
+    public Interpreter(Map<String, Function<List<Object>, Object>> functions) {
+        this.functions = functions;
+    }
+
+    public Object eval(String str, Map<String,?> args) {
+        return eval(str, args, functions);
+    }
 
     public static Object eval(String str, Map<String,?> args, Map<String, Function<List<Object>, Object>> functions) {
         return new Object() {

@@ -1,4 +1,4 @@
-package com.github.artyomcool.lodinfra;
+package com.github.artyomcool.lodinfra.ui;
 
 import com.jfoenix.controls.JFXButton;
 import com.jfoenix.controls.JFXChip;
