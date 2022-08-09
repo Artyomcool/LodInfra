@@ -200,7 +200,11 @@ public class Gui extends Application {
     }
 
     private Stream<TabGroup> allTabs() {
-        return config.tabs.stream().flatMap(t -> t.type == TabType.join ? t.tabs.stream() : Stream.of(t));
+        return allTabs(config.tabs);
+    }
+
+    private Stream<TabGroup> allTabs(List<TabGroup> tabs) {
+        return tabs.stream().flatMap(t -> t.type == TabType.join ? allTabs(t.tabs) : Stream.of(t));
     }
 
     private void initTabs(StackPane root) {

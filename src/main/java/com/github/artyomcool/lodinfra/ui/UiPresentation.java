@@ -93,19 +93,36 @@ public class UiPresentation {
         } else if (tabGroup.type == TabType.join) {
             List<Entry> common = new ArrayList<>();
             for (TabGroup group : tabGroup.tabs) {
-                List<Entry> current = getEntries(data, group);
-                if (current.size() <= 4) {
-                    common.addAll(current);
-                } else {
+                if (group.type == TabType.join) {
+                    List<Entry> current = new ArrayList<>();
+                    for (TabGroup subtab : group.tabs) {
+                        current.addAll(getEntries(data, subtab));
+                    }
                     String name = group.name.get(lang);
                     if (name == null || name.isEmpty()) {
                         name = group.title;
                     }
                     ListView<Entry> list = getListView(parent, current);
-                    listParent.getChildren().add(pane(name, list));
+                    TitledPane pane = new TitledPane(name, list);
+                    pane.setAnimated(false);
+                    listParent.getChildren().add(pane);
+
+                } else {
+                    List<Entry> current = getEntries(data, group);
+                    if (current.size() <= 4) {
+                        common.addAll(current);
+                    } else {
+                        String name = group.name.get(lang);
+                        if (name == null || name.isEmpty()) {
+                            name = group.title;
+                        }
+                        ListView<Entry> list = getListView(parent, current);
+                        TitledPane pane = new TitledPane(name, list);
+                        pane.setAnimated(false);
+                        listParent.getChildren().add(pane);
+                    }
                 }
             }
-
             if (common.size() > 0) {
                 if (listParent.getChildren().size() > 0) {
                     ListView<Entry> list = getListView(parent, common);

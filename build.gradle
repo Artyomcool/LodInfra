@@ -64,7 +64,7 @@ dependencies {
 }
 
 javafx {
-    version = '11'
+    version = '17'
     modules = ['javafx.graphics','javafx.controls']
 }
 
