@@ -68,6 +68,8 @@ public class Gui extends Application {
             primaryStage.setTitle("Data Editor");
             StackPane root = new StackPane();
 
+            root.getChildren().add(new TabPane(createLastFiles(root)));
+
             MenuButton fileMenu = new MenuButton("File");
 
             MenuItem save = fileChooserMenu(
@@ -102,9 +104,7 @@ public class Gui extends Application {
                     true,
                     "dat",
                     "Shift+Ctrl+O",
-                    file -> {
-                        loadDat(root, file);
-                    }
+                    file -> loadDat(root, file)
             );
             fileMenu.getItems().add(_import);
 
@@ -122,6 +122,54 @@ public class Gui extends Application {
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
+    }
+
+    private record LastItem(String path, boolean open) {
+        @Override
+        public String toString() {
+            return (open ? "Open JSON " : "Open DAT ") + path;
+        }
+    }
+
+    private Tab createLastFiles(StackPane root) {
+        Tab files = new Tab("Last files");
+        files.setClosable(true);
+        ListView<LastItem> list = new ListView<>();
+
+        VBox listParent = new VBox(list);
+        for (String json : prefs.get("last-files-json", "").split(",")) {
+            if (!json.equals("")) {
+                list.getItems().add(new LastItem(json, true));
+            }
+        }
+        for (String dat : prefs.get("last-files-dat", "").split(",")) {
+            if (!dat.equals("")) {
+                list.getItems().add(new LastItem(dat, false));
+            }
+        }
+        list.setCellFactory(lv -> new ListCell<>() {
+            @Override
+            protected void updateItem(LastItem item, boolean empty) {
+                super.updateItem(item, empty);
+                setText(item == null ? null : item.toString());
+                if (!empty) {
+                    setOnMouseClicked(event -> {
+                        try {
+                            if (item.open) {
+                                loadJson(root, new File(item.path).toPath());
+                            } else {
+                                loadDat(root, new File(item.path).toPath());
+                            }
+                        } catch (IOException e) {
+                            throw new RuntimeException(e);
+                        }
+                    });
+                }
+            }
+        });
+        VBox.setVgrow(list, Priority.ALWAYS);
+        files.setContent(listParent);
+        return files;
     }
 
     private void saveJson(Path file) throws IOException {
@@ -195,6 +243,13 @@ public class Gui extends Application {
                 throw new UncheckedIOException(e);
             }
             prefs.put("file-" + ext, file.getAbsolutePath());
+
+            List<String> lastFiles = new ArrayList<>(Arrays.asList(prefs.get("last-files-" + ext, "").split(",")));
+            lastFiles.remove(file.getAbsolutePath());
+            lastFiles.add(0, file.getAbsolutePath());
+            lastFiles.remove("");
+
+            prefs.put("last-files-" + ext, String.join(",", lastFiles));
         });
         return item;
     }
