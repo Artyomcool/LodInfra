@@ -449,7 +449,7 @@ public class AliasProcessor {
         return new HashMap<>();
     }
 
-    public void write(Object serialized, Map<String, Object> params, Object data) {
+    public void write(Object serialized, Map<String, Object> params, List<DataEntry> data) {
         if (this.data.structs.containsKey("#debug")) {
             System.out.println("Debug write: " + this.data.path);
         }

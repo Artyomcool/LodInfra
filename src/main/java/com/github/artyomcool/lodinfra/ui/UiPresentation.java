@@ -13,6 +13,7 @@ import javafx.beans.value.ChangeListener;
 import javafx.beans.value.ObservableValue;
 import javafx.collections.FXCollections;
 import javafx.collections.ListChangeListener;
+import javafx.collections.ObservableList;
 import javafx.event.EventHandler;
 import javafx.geometry.Insets;
 import javafx.geometry.Orientation;
@@ -26,6 +27,7 @@ import javafx.scene.input.MouseEvent;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
 import javafx.scene.text.Font;
+import javafx.stage.Stage;
 import javafx.util.StringConverter;
 import org.controlsfx.control.textfield.CustomTextField;
 
@@ -41,6 +43,8 @@ public class UiPresentation {
     private final Data data;
     private final JsonSerializer json;
     private final String lang;
+    private Stage primaryStage;
+    private StackPane root;
 
     public UiPresentation(Config config, Data data, JsonSerializer json, String lang) {
         this.config = config;
@@ -49,12 +53,15 @@ public class UiPresentation {
         this.lang = lang;
     }
 
-    public void initTabs(StackPane root) {
+    public void initTabs(StackPane root, Stage primaryStage) {
+        this.primaryStage = primaryStage;
+        this.root = root;
+
         TabPane tabs = new TabPane();
         root.getChildren().removeIf(n -> n instanceof TabPane);
         root.getChildren().add(0, tabs);
         for (TabGroup tabGroup : config.tabs) {
-            Tab tab = getTab(data, tabGroup);
+            Tab tab = getTab(tabGroup);
             tabs.getTabs().add(tab);
         }
     }
@@ -72,7 +79,7 @@ public class UiPresentation {
         return pane;
     }
 
-    private Tab getTab(Data data, TabGroup tabGroup) {
+    private Tab getTab(TabGroup tabGroup) {
         Tab tab = new Tab(tabGroup.name.get(lang));
         tab.setClosable(false);
 
@@ -88,7 +95,7 @@ public class UiPresentation {
 
         if (tabGroup.type == TabType.multiple) {
             List<Entry> entries = getEntries(data, tabGroup);
-            ListView<Entry> list = getListView(parent, entries);
+            ListView<Entry> list = getListView(tab, parent, entries);
             listParent.getChildren().add(grow(list));
         } else if (tabGroup.type == TabType.join) {
             List<Entry> common = new ArrayList<>();
@@ -102,7 +109,7 @@ public class UiPresentation {
                     if (name == null || name.isEmpty()) {
                         name = group.title;
                     }
-                    ListView<Entry> list = getListView(parent, current);
+                    ListView<Entry> list = getListView(tab, parent, current);
                     TitledPane pane = new TitledPane(name, list);
                     pane.setAnimated(false);
                     listParent.getChildren().add(pane);
@@ -116,7 +123,7 @@ public class UiPresentation {
                         if (name == null || name.isEmpty()) {
                             name = group.title;
                         }
-                        ListView<Entry> list = getListView(parent, current);
+                        ListView<Entry> list = getListView(tab, parent, current);
                         TitledPane pane = new TitledPane(name, list);
                         pane.setAnimated(false);
                         listParent.getChildren().add(pane);
@@ -125,10 +132,10 @@ public class UiPresentation {
             }
             if (common.size() > 0) {
                 if (listParent.getChildren().size() > 0) {
-                    ListView<Entry> list = getListView(parent, common);
+                    ListView<Entry> list = getListView(tab, parent, common);
                     listParent.getChildren().add(pane("Other", list));
                 } else {
-                    ListView<Entry> list = getListView(parent, common);
+                    ListView<Entry> list = getListView(tab, parent, common);
                     listParent.getChildren().add(grow(list));
                 }
             }
@@ -169,7 +176,8 @@ public class UiPresentation {
         }
     }
 
-    private ListView<Entry> getListView(StackPane parent, List<Entry> entries) {
+    private ListView<Entry> getListView(Tab tab, StackPane parent, List<Entry> entries) {
+        String oldName = tab.getText();
         ListView<Entry> listView = new ListView<>();
         listView.getItems().addAll(entries);
 
@@ -234,6 +242,9 @@ public class UiPresentation {
                 } else {
                     setText(getItem() == null ? null : getItem().title);
                 }
+                if (entry != null) {
+                    applyDirty(this, !entry.data.dirty.isEmpty());
+                }
             }
         });
 
@@ -256,11 +267,27 @@ public class UiPresentation {
         listView.getSelectionModel().selectedItemProperty().addListener(
                 (observable, oldValue, newValue) -> {
                     Context context = new Context(config, data, newValue.data);
+                    context.registerDirty(d -> {
+                        int index = listView.getSelectionModel().getSelectedIndex();
+                        ObservableList<Entry> items = listView.getItems();
+                        items.set(index, items.get(index));
+
+                        if (d) {
+                            data.dirty = true;
+                            tab.setText(oldName + "*");
+                            String title = primaryStage.getTitle();
+                            if (!title.endsWith("*")) {
+                                primaryStage.setTitle(title + "*");
+                            }
+                        }
+                    });
                     parent.getChildren().clear();
 
                     Parent content = parseTab(newValue.group, context);
                     parent.getChildren().add(content);
                     finishContext(context);
+
+                    root.getProperties().put("currentContext", context);
                 }
         );
         return listView;
@@ -303,6 +330,8 @@ public class UiPresentation {
         scrollPane.setFitToHeight(true);
         scrollPane.setVbarPolicy(ScrollPane.ScrollBarPolicy.ALWAYS);
         content = scrollPane;
+
+        scrollPane.getStyleClass().add("child-content");
 
         return content;
     }
@@ -356,6 +385,7 @@ public class UiPresentation {
                 case dependent: {
                     StackPane node = new StackPane();
                     context.delay(node, field);
+                    registerDirty(context, node);
                     return Collections.singletonList(node);
                 }
             }
@@ -408,6 +438,7 @@ public class UiPresentation {
         );
         applyMaxWidthPrefWidth(pane, field.maxWidth);
         pane.setPadding(padding);
+        registerDirty(context, pane);
 
         return Collections.singletonList(pane);
     }
@@ -470,6 +501,7 @@ public class UiPresentation {
         pane.setPrefHeight(1);
         pane.getChildren().add(textField);
         pane.setPadding(padding);
+        registerDirty(context, pane);
         return Collections.singletonList(pane);
     }
 
@@ -519,6 +551,7 @@ public class UiPresentation {
         pane.getChildren().add(textField);
         pane.setPadding(padding);
 
+        registerDirty(context, pane);
 
         return Collections.singletonList(pane);
     }
@@ -559,6 +592,7 @@ public class UiPresentation {
                 }
             }
         });
+        registerDirty(context, pane);
         return Collections.singletonList(pane);
     }
 
@@ -578,6 +612,7 @@ public class UiPresentation {
         pane.getChildren().add(label);
         pane.getChildren().add(textField);
         pane.setPadding(padding);
+        registerDirty(context, pane);
         return Collections.singletonList(pane);
     }
 
@@ -598,6 +633,7 @@ public class UiPresentation {
         pane.getChildren().add(label);
         pane.getChildren().add(textField);
         pane.setPadding(padding);
+        registerDirty(context, pane);
         return Collections.singletonList(pane);
     }
 
@@ -650,6 +686,7 @@ public class UiPresentation {
                     stateChanged = !stateChanged;
                 }
             });
+            registerDirty(context, pane);
             return Collections.singletonList(pane);
         }
         if ("line".equals(field.option)) {
@@ -657,6 +694,7 @@ public class UiPresentation {
             for (Field f : field.fields) {
                 content.getChildren().addAll(parse(f, context));
             }
+            registerDirty(context, content);
             return Collections.singletonList(content);
         }
         if ("simple".equals(field.option)) {
@@ -727,7 +765,22 @@ public class UiPresentation {
             box.setMaxWidth(field.maxWidth);
         }
         pane.setPadding(padding);
+        registerDirty(context, pane);
         return Collections.singletonList(pane);
+    }
+
+    public void registerDirty(Context context, Node node) {
+        context.registerDirty(d -> applyDirty(node, d));
+    }
+
+    private static void applyDirty(Node node, boolean d) {
+        if (d) {
+            if (!node.getStyleClass().contains("dirty")) {
+                node.getStyleClass().add("dirty");
+            }
+        } else {
+            node.getStyleClass().remove("dirty");
+        }
     }
 
     private List<Node> parseArray(Field field, Context context) {
@@ -828,6 +881,7 @@ public class UiPresentation {
                 bar.setPadding(padding);
                 r.add(bar);
             }
+            registerDirty(context, listView);
             return r;
         } else {
             List<Node> r = new ArrayList<>(count);

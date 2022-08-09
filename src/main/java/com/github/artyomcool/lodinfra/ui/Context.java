@@ -1,15 +1,18 @@
 package com.github.artyomcool.lodinfra.ui;
 
 import com.github.artyomcool.lodinfra.data.Helpers;
+import com.github.artyomcool.lodinfra.data.dto.DataEntry;
 import com.github.artyomcool.lodinfra.data.dto.Field;
 import com.github.artyomcool.lodinfra.data.dto.Config;
 import javafx.beans.property.Property;
 import javafx.beans.property.SimpleObjectProperty;
 import javafx.beans.property.StringProperty;
 import javafx.beans.value.ObservableValue;
+import javafx.scene.Node;
 import javafx.scene.layout.StackPane;
 
 import java.util.*;
+import java.util.function.Consumer;
 
 public class Context {
     final Config config;
@@ -19,10 +22,11 @@ public class Context {
 
     final Deque<Map<String, ?>> vars = new ArrayDeque<>();
     final Deque<String> path = new ArrayDeque<>();
+    final Map<String, List<Consumer<Boolean>>> dirtyListeners = new HashMap<>();
 
-    final Map<String, Object> data;
+    final DataEntry data;
 
-    Context(Config config, Map<String, ?> toSerialize, Map<String, Object> localData) {
+    Context(Config config, Map<String, ?> toSerialize, DataEntry localData) {
         this.config = config;
         vars.push(config.enums);
         vars.push(config.dynamicEnums(toSerialize));
@@ -104,6 +108,7 @@ public class Context {
     }
 
     void set(Map<String, Object> data, String[] path, Object value) {
+        config.clearDynamicEnumCache();
         Object d = data;
         for (int i = 0; i < path.length - 1; i++) {
             if (d instanceof Map) {
@@ -131,6 +136,7 @@ public class Context {
             }
             lst.set(t, value);
         }
+        markDirty(String.join("/", path));
     }
 
     void set(Object value) {
@@ -178,7 +184,23 @@ public class Context {
             } else {
                 ((Map) t).put(n, newValue);
             }
+            markDirty(key);
         });
+    }
+
+    public void markDirty(String path) {
+        if (data.dirty.add(path)) {
+            ArrayDeque<String> pathDeque = new ArrayDeque<>(Arrays.asList(path.split("/")));
+            while (true) {
+                for (Consumer<Boolean> consumer : dirtyListeners.getOrDefault(String.join("/", pathDeque), Collections.emptyList())) {
+                    consumer.accept(true);
+                }
+                if (pathDeque.isEmpty()) {
+                    break;
+                }
+                pathDeque.removeLast();
+            }
+        }
     }
 
     private Object evaluate(Object data, Map<String, Object> params) {
@@ -251,6 +273,34 @@ public class Context {
     public void ref(String id, ObservableValue<?> observable) {
         if (id != null) {
             refs.put(id, observable);
+        }
+    }
+
+    public void registerDirty(Consumer<Boolean> listener) {
+        String path = path();
+        dirtyListeners.computeIfAbsent(path, k -> new ArrayList<>()).add(listener);
+        if (data.dirty.contains(path)) {
+            listener.accept(true);
+            return;
+        }
+
+        path += "/";
+
+        for (String dirty : data.dirty) {
+            if (dirty.startsWith(path)) {
+                listener.accept(true);
+                return;
+            }
+        }
+
+        listener.accept(false);
+    }
+
+    public void cleanUpDirty() {
+        for (List<Consumer<Boolean>> value : dirtyListeners.values()) {
+            for (Consumer<Boolean> consumer : value) {
+                consumer.accept(false);
+            }
         }
     }
 

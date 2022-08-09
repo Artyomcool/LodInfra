@@ -54,3 +54,12 @@
     -fx-background-color: null;
     -fx-cursor: default;
 }
+
+.child-content .dirty {
+    -fx-border-color: red;
+    -fx-background-color: linear-gradient(#FF804020, #FFC08060);
+}
+
+.list-cell.dirty {
+    -fx-border-color: red;
+}

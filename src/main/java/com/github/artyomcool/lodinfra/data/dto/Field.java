@@ -16,6 +16,6 @@ public class Field extends Group {
     public Map<String, Field> cases;
     public String link;
     public Map<String, Object> vars;
-    public int min;
-    public int max;
+    public int min = Integer.MIN_VALUE;
+    public int max = Integer.MAX_VALUE;
 }

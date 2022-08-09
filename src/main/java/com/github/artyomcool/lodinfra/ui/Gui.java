@@ -56,6 +56,7 @@ public class Gui extends Application {
     Preferences prefs = Preferences.userRoot().node(this.getClass().getName());
 
     Insets padding = new Insets(2, 2, 2, 2);
+    private Stage primaryStage;
 
     public Gui(Path cfg) throws IOException {
         this.config = json.loadConfig(cfg);
@@ -64,6 +65,7 @@ public class Gui extends Application {
 
     @Override
     public void start(Stage primaryStage) {
+        this.primaryStage = primaryStage;
         try {
             primaryStage.setTitle("Data Editor");
             StackPane root = new StackPane();
@@ -77,7 +79,7 @@ public class Gui extends Application {
                     false,
                     "json",
                     "Ctrl+S",
-                    this::saveJson
+                    file -> saveJson(root, file)
             );
             fileMenu.getItems().add(save);
 
@@ -95,7 +97,7 @@ public class Gui extends Application {
                     false,
                     "dat",
                     "Shift+Ctrl+S",
-                    this::saveDat
+                    file -> saveDat(root, file)
             );
             fileMenu.getItems().add(export);
 
@@ -172,21 +174,25 @@ public class Gui extends Application {
         return files;
     }
 
-    private void saveJson(Path file) throws IOException {
+    private void saveJson(StackPane root, Path file) throws IOException {
         json.saveData(data, file);
+        primaryStage.setTitle(file.toString());
+        cleanTabs(root);
     }
 
     private void loadJson(StackPane root, Path file) throws IOException {
         data = json.loadData(file);
 
         initTabs(root);
+
+        primaryStage.setTitle(file.toString());
     }
 
-    private void saveDat(Path file) throws IOException {
+    private void saveDat(StackPane root, Path file) throws IOException {
         Object serialized = new HashMap<>();
 
         allTabs().forEach(tabGroup -> {
-            Object data = this.data.get(tabGroup.id);
+            List<DataEntry> data = this.data.get(tabGroup.id);
 
             Alias alias = format.aliases.get(tabGroup.alias);
             new AliasProcessor(format.processors, alias).write(serialized, Collections.emptyMap(), data);
@@ -196,6 +202,34 @@ public class Gui extends Application {
                 new BufferedOutputStream(Files.newOutputStream(file))
         )) {
             FormatParser.write(out, serialized, format.template, format.structs);
+        }
+
+        primaryStage.setTitle(file.toString());
+        cleanTabs(root);
+    }
+
+    private void cleanTabs(StackPane root) {
+        allTabs().forEach(tabGroup -> {
+            List<DataEntry> data = this.data.get(tabGroup.id);
+            for (DataEntry entry : data) {
+                entry.dirty.clear();
+            }
+        });
+
+        for (Node child : root.getChildren()) {
+            if (child instanceof TabPane) {
+                for (Tab tab : ((TabPane) child).getTabs()) {
+                    String text = tab.getText();
+                    if (text.endsWith("*")) {
+                        tab.setText(text.substring(0, text.length() - 1));
+                    }
+                }
+            }
+        }
+
+        Context context = (Context) root.getProperties().get("currentContext");
+        if (context != null) {
+            context.cleanUpDirty();
         }
     }
 
@@ -214,6 +248,8 @@ public class Gui extends Application {
             });
             initTabs(root);
         }
+
+        primaryStage.setTitle(file.toString());
     }
 
     private FileChooser createFileChooser(String name, String fileExt) {
@@ -263,7 +299,7 @@ public class Gui extends Application {
     }
 
     private void initTabs(StackPane root) {
-        new UiPresentation(config, data, json, lang).initTabs(root);
+        new UiPresentation(config, data, json, lang).initTabs(root, primaryStage);
     }
 
     private interface FileHandler {

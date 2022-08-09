@@ -203,13 +203,19 @@ public class Interpreter {
                                 return callFunction(name, args);
                             } else if (eat('[')) {
                                 Object expression = parseExpression();
-                                if (expression instanceof String) {
-                                    expression = Integer.parseInt((String) expression);
-                                }
-                                int e = ((Number) expression).intValue();
                                 eat(']');
-                                List<?> lst = (List<?>) getArg(name);
-                                return lst.get(e);
+                                Object arg = getArg(name);
+                                if (arg instanceof List) {
+                                    if (expression instanceof String) {
+                                        expression = Integer.parseInt((String) expression);
+                                    }
+                                    int e = ((Number) expression).intValue();
+                                    List<?> lst = (List<?>) arg;
+                                    return lst.get(e);
+                                } else {
+                                    Map<String, ?> map = (Map<String, ?>) arg;
+                                    return map.get(expression);
+                                }
                             }
                             return getArg(name);
                         } else {
