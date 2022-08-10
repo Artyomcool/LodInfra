@@ -40,6 +40,7 @@ import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
+import java.util.function.Consumer;
 import java.util.prefs.Preferences;
 import java.util.regex.Matcher;
 import java.util.stream.Collectors;
@@ -74,41 +75,45 @@ public class Gui extends Application {
 
             MenuButton fileMenu = new MenuButton("File");
 
-            MenuItem save = fileChooserMenu(
+            fileMenu.getItems().add(createMenuItem(
+                    "Undo",
+                    "Ctrl+Alt+Z",
+                    () -> doWithContext(root, Context::undo)
+            ));
+
+            fileMenu.getItems().add(new SeparatorMenuItem());
+
+            fileMenu.getItems().add(fileChooserMenu(
                     primaryStage,
                     false,
                     "json",
                     "Ctrl+S",
                     file -> saveJson(root, file)
-            );
-            fileMenu.getItems().add(save);
+            ));
 
-            MenuItem open = fileChooserMenu(
+            fileMenu.getItems().add(fileChooserMenu(
                     primaryStage,
                     true,
                     "json",
                     "Ctrl+O",
                     file -> loadJson(root, file)
-            );
-            fileMenu.getItems().add(open);
+            ));
 
-            MenuItem export = fileChooserMenu(
+            fileMenu.getItems().add(fileChooserMenu(
                     primaryStage,
                     false,
                     "dat",
                     "Shift+Ctrl+S",
                     file -> saveDat(root, file)
-            );
-            fileMenu.getItems().add(export);
+            ));
 
-            MenuItem _import = fileChooserMenu(
+            fileMenu.getItems().add(fileChooserMenu(
                     primaryStage,
                     true,
                     "dat",
                     "Shift+Ctrl+O",
                     file -> loadDat(root, file)
-            );
-            fileMenu.getItems().add(_import);
+            ));
 
             Scene scene = new Scene(root);
             scene.getStylesheets().add(getClass().getResource("/theme.css").toExternalForm());
@@ -226,9 +231,13 @@ public class Gui extends Application {
             }
         }
 
+        doWithContext(root, Context::cleanUpDirty);
+    }
+
+    private void doWithContext(StackPane root, Consumer<Context> consumer) {
         Context context = (Context) root.getProperties().get("currentContext");
         if (context != null) {
-            context.cleanUpDirty();
+            consumer.accept(context);
         }
     }
 

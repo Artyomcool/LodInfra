@@ -517,7 +517,7 @@ public class UiPresentation {
         textField.setPrefColumnCount(32);
 
 
-        Property<Object> obj = context.currentProperty();
+        Property<Object> obj = context.createJsonProperty();
         textField.textProperty().bindBidirectional(obj, new StringConverter<Object>() {
             @Override
             public String toString(Object object) {
@@ -660,7 +660,7 @@ public class UiPresentation {
             }
             label.setOnMouseClicked(new EventHandler<>() {
                 boolean stateChanged = false;
-                Property<Object> obj = context.currentProperty();
+                Property<Object> obj = context.createJsonProperty();
                 TextArea area = new TextArea();
 
                 {
@@ -719,7 +719,7 @@ public class UiPresentation {
                 Node label = getChildren().get(1);
                 label.setOnMouseClicked(new EventHandler<>() {
                     boolean stateChanged = false;
-                    Property<Object> obj = context.currentProperty();
+                    Property<Object> obj = context.createJsonProperty();
                     TextArea area = new TextArea();
 
                     {

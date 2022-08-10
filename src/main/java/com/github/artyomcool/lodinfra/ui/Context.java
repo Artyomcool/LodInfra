@@ -8,7 +8,6 @@ import javafx.beans.property.Property;
 import javafx.beans.property.SimpleObjectProperty;
 import javafx.beans.property.StringProperty;
 import javafx.beans.value.ObservableValue;
-import javafx.scene.Node;
 import javafx.scene.layout.StackPane;
 
 import java.util.*;
@@ -22,9 +21,12 @@ public class Context {
 
     final Deque<Map<String, ?>> vars = new ArrayDeque<>();
     final Deque<String> path = new ArrayDeque<>();
+    final Deque<Runnable> undo = new ArrayDeque<>();
     final Map<String, List<Consumer<Boolean>>> dirtyListeners = new HashMap<>();
 
     final DataEntry data;
+
+    boolean inNotifyProcess = false;
 
     Context(Config config, Map<String, ?> toSerialize, DataEntry localData) {
         this.config = config;
@@ -56,7 +58,7 @@ public class Context {
         return path;
     }
 
-    Object get(Map<String, Object> data, String[] path) {
+    Object get(String[] path) {
         Object d = data;
         for (int i = 0; i < path.length; ) {
             d = ((Map) d).get(path[i++]);
@@ -107,7 +109,7 @@ public class Context {
         return d;
     }
 
-    void set(Map<String, Object> data, String[] path, Object value) {
+    private void set(String[] path, Object value, boolean notify, boolean undo) {
         config.clearDynamicEnumCache();
         Object d = data;
         for (int i = 0; i < path.length - 1; i++) {
@@ -124,68 +126,98 @@ public class Context {
             }
         }
         if (d instanceof Map) {
-            ((Map) d).put(path[path.length - 1], value);
+            Object old = value == null ? ((Map) d).remove(path[path.length - 1]) : ((Map) d).put(path[path.length - 1], value);
+            pushUndo(path, old, undo);
         } else if (d instanceof List) {
             String p = path[path.length - 1];
             String[] split = p.split("\\?", -1);
             p = split[0];
             int t = Integer.parseInt(p);
             List lst = (List) d;
+            boolean trimList = lst.size() <= t;
+            if (trimList) {
+                pushUndoTrim(path, lst.size(), undo);
+            }
             while (lst.size() <= t) {
                 lst.add(null);
             }
+            if (!trimList) {
+                pushUndo(path, lst.get(t), undo);
+            }
             lst.set(t, value);
         }
-        markDirty(String.join("/", path));
+
+        String key = String.join("/", path);
+        if (!undo) {
+            markDirty(key);
+        }
+        if (notify) {
+            inNotifyProcess = true;
+            for (StringProperty property : properties.getOrDefault(key, Collections.emptyList())) {
+                property.setValue(Helpers.string(value));
+            }
+            inNotifyProcess = false;
+        }
+    }
+
+    void set(String[] path, Object value) {
+        set(path, value, false, false);
+    }
+
+    private void pushUndo(String[] path, Object old, boolean undo) {
+        if (!undo) {
+            this.undo.push(() -> set(path, old, true, !undo));
+        }
+    }
+
+    private void pushUndoTrim(String[] path, int size, boolean undo) {
+        if (!undo) {
+            this.undo.push(() -> set(path, trim(path, size), true, !undo));
+        }
+    }
+
+    private List<?> trim(String[] path, int size) {
+        List<?> lst = (List<?>) get(path);
+        while (lst.size() > size) {
+            lst.remove(size);
+        }
+        return lst;
     }
 
     void set(Object value) {
-        set(data, this.path().split("/"), value);
+        set(this.path().split("/"), value);
     }
 
     public Object currentValue() {
         String key = this.path();
         String[] path = key.split("/");
-        return get(data, path);
+        return get(path);
     }
 
-    public Property<Object> currentProperty() {
+    public Property<Object> createJsonProperty() {  // FIXME
         String key = this.path();
         String[] path = key.split("/");
 
         Property<Object> result = new SimpleObjectProperty<>();
-        result.setValue(get(data, path));
-        result.addListener((observable, oldValue, newValue) -> set(data, path, newValue));
+        result.setValue(get(path));
+        listen(path, result);
         return result;
+    }
+
+    private void listen(String[] path, Property<?> result) {
+        result.addListener((observable, oldValue, newValue) -> {
+            if (!inNotifyProcess) {
+                set(path, newValue);
+            }
+        });
     }
 
     public void addProperty(StringProperty property) {
         String key = this.path();
         String[] path = key.split("/");
         properties.computeIfAbsent(key, k -> new ArrayList<>()).add(property);
-        property.setValue(Helpers.string(get(data, path)));
-        property.addListener((observable, oldValue, newValue) -> {
-            config.clearDynamicEnumCache();
-            Object t = data;
-            for (int i = 0; i < path.length - 1; i++) {
-                if (t instanceof List) {
-                    t = ((List) t).get(Integer.parseInt(path[i]));
-                } else {
-                    t = ((Map) t).get(path[i]);
-                }
-            }
-            String n = path[path.length - 1];
-            if (t instanceof List) {
-
-                String[] split = n.split("\\?", -1);
-                n = split[0];
-
-                ((List) t).set(Integer.parseInt(n), newValue);
-            } else {
-                ((Map) t).put(n, newValue);
-            }
-            markDirty(key);
-        });
+        property.setValue(Helpers.string(get(path)));
+        listen(path, property);
     }
 
     public void markDirty(String path) {
@@ -301,6 +333,13 @@ public class Context {
             for (Consumer<Boolean> consumer : value) {
                 consumer.accept(false);
             }
+        }
+    }
+
+    public void undo() {
+        Runnable u = undo.poll();
+        if (u != null) {
+            u.run();
         }
     }
 
