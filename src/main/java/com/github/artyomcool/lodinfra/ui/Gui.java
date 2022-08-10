@@ -189,14 +189,13 @@ public class Gui extends Application {
     }
 
     private void saveDat(StackPane root, Path file) throws IOException {
-        Object serialized = new HashMap<>();
+        Object serialized = new LinkedHashMap<>();
 
-        allTabs().forEach(tabGroup -> {
-            List<DataEntry> data = this.data.get(tabGroup.id);
-
-            Alias alias = format.aliases.get(tabGroup.alias);
-            new AliasProcessor(format.processors, alias).write(serialized, Collections.emptyMap(), data);
-        });
+        Map<String, TabGroup> groupMap = allTabs().collect(Collectors.toMap(t -> t.id, t -> t));
+        for (Map.Entry<String, List<DataEntry>> entry : this.data.entrySet()) {
+            Alias alias = format.aliases.get(groupMap.get(entry.getKey()).alias);
+            new AliasProcessor(format.processors, alias).write(serialized, Collections.emptyMap(), entry.getValue());
+        }
 
         try (DataOutputStream out = new DataOutputStream(
                 new BufferedOutputStream(Files.newOutputStream(file))
@@ -266,28 +265,36 @@ public class Gui extends Application {
         return fileChooser;
     }
 
+    private MenuItem createMenuItem(String name, String shortcut, Runnable callback) {
+        MenuItem item = new MenuItem(name);
+        item.setAccelerator(KeyCombination.valueOf(shortcut));
+        item.setOnAction(a -> callback.run());
+        return item;
+    }
+
     private MenuItem fileChooserMenu(Stage primaryStage, boolean open, String ext, String accelerator, FileHandler callback) {
         String title = open ? "Open " + ext.toUpperCase(Locale.ROOT) : "Save " + ext.toUpperCase(Locale.ROOT);
-        MenuItem item = new MenuItem(title);
-        item.setAccelerator(KeyCombination.valueOf(accelerator));
-        item.setOnAction(event -> {
-            FileChooser chooser = createFileChooser(title, ext);
-            File file = open ? chooser.showOpenDialog(primaryStage) : chooser.showSaveDialog(primaryStage);
-            try {
-                callback.handle(file.toPath());
-            } catch (IOException e) {
-                throw new UncheckedIOException(e);
-            }
-            prefs.put("file-" + ext, file.getAbsolutePath());
+        return createMenuItem(
+                title,
+                accelerator,
+                () -> {
+                    FileChooser chooser = createFileChooser(title, ext);
+                    File file = open ? chooser.showOpenDialog(primaryStage) : chooser.showSaveDialog(primaryStage);
+                    try {
+                        callback.handle(file.toPath());
+                    } catch (IOException e) {
+                        throw new UncheckedIOException(e);
+                    }
+                    prefs.put("file-" + ext, file.getAbsolutePath());
 
-            List<String> lastFiles = new ArrayList<>(Arrays.asList(prefs.get("last-files-" + ext, "").split(",")));
-            lastFiles.remove(file.getAbsolutePath());
-            lastFiles.add(0, file.getAbsolutePath());
-            lastFiles.remove("");
+                    List<String> lastFiles = new ArrayList<>(Arrays.asList(prefs.get("last-files-" + ext, "").split(",")));
+                    lastFiles.remove(file.getAbsolutePath());
+                    lastFiles.add(0, file.getAbsolutePath());
+                    lastFiles.remove("");
 
-            prefs.put("last-files-" + ext, String.join(",", lastFiles));
-        });
-        return item;
+                    prefs.put("last-files-" + ext, String.join(",", lastFiles));
+                }
+        );
     }
 
     private Stream<TabGroup> allTabs() {
