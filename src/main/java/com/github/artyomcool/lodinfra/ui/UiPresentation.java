@@ -26,6 +26,7 @@ import javafx.scene.input.KeyCode;
 import javafx.scene.input.MouseEvent;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
+import javafx.scene.paint.Paint;
 import javafx.scene.text.Font;
 import javafx.stage.Stage;
 import javafx.util.StringConverter;
@@ -263,34 +264,73 @@ public class UiPresentation {
             listView.getItems().add(entry.copy());
         });
 
-        listView.setContextMenu(new ContextMenu(copy, delete));
+        MenuItem raw = new MenuItem("Edit raw");
+        raw.setOnAction(a -> {
+            int index = listView.getSelectionModel().getSelectedIndex();
+            Entry entry = listView.getItems().get(index);
+            Context context = new Context(config, data, entry.data);
+
+            parent.getChildren().clear();
+
+            Button okButton = new Button("ok");
+            Button cancelButton = new Button("cancel");
+
+            HBox buttons = new HBox();
+            buttons.getChildren().setAll(okButton, cancelButton);
+            buttons.getStyleClass().add("tiny-button-bar");
+            buttons.setMaxHeight(20);
+            buttons.setAlignment(Pos.CENTER_RIGHT);
+            buttons.setPadding(new Insets(2));
+            StackPane.setAlignment(buttons, Pos.TOP_RIGHT);
+
+            TextArea area = new TextArea();
+            area.setText(json.elementToText(context.data));
+
+            parent.getChildren().setAll(area, buttons);
+
+            cancelButton.setOnAction(e -> {
+                showItem(tab, parent, oldName, listView, entry);
+                e.consume();
+            });
+            okButton.setOnAction(e -> {
+                context.apply("", json.elementFromText(area.getText()));
+                showItem(tab, parent, oldName, listView, entry);
+                e.consume();
+            });
+        });
+
+        listView.setContextMenu(new ContextMenu(copy, delete, raw));
         listView.getSelectionModel().selectedItemProperty().addListener(
                 (observable, oldValue, newValue) -> {
-                    Context context = new Context(config, data, newValue.data);
-                    context.registerDirty(d -> {
-                        int index = listView.getSelectionModel().getSelectedIndex();
-                        ObservableList<Entry> items = listView.getItems();
-                        items.set(index, items.get(index));
-
-                        if (d) {
-                            data.dirty = true;
-                            tab.setText(oldName + "*");
-                            String title = primaryStage.getTitle();
-                            if (!title.endsWith("*")) {
-                                primaryStage.setTitle(title + "*");
-                            }
-                        }
-                    });
-                    parent.getChildren().clear();
-
-                    Parent content = parseTab(newValue.group, context);
-                    parent.getChildren().add(content);
-                    finishContext(context);
-
-                    root.getProperties().put("currentContext", context);
+                    showItem(tab, parent, oldName, listView, newValue);
                 }
         );
         return listView;
+    }
+
+    private void showItem(Tab tab, StackPane parent, String oldName, ListView<Entry> listView, Entry newValue) {
+        Context context = new Context(config, data, newValue.data);
+        context.registerDirty(d -> {
+            int index = listView.getSelectionModel().getSelectedIndex();
+            ObservableList<Entry> items = listView.getItems();
+            items.set(index, items.get(index));
+
+            if (d) {
+                data.dirty = true;
+                tab.setText(oldName + "*");
+                String title = primaryStage.getTitle();
+                if (!title.endsWith("*")) {
+                    primaryStage.setTitle(title + "*");
+                }
+            }
+        });
+        parent.getChildren().clear();
+
+        Parent content = parseTab(newValue.group, context);
+        parent.getChildren().add(content);
+        finishContext(context);
+
+        root.getProperties().put("currentContext", context);
     }
 
     private void finishContext(Context context) {
@@ -517,7 +557,7 @@ public class UiPresentation {
         textField.setPrefColumnCount(32);
 
 
-        Property<Object> obj = context.createJsonProperty();
+        Property<Object> obj = context.createRawProperty();
         textField.textProperty().bindBidirectional(obj, new StringConverter<Object>() {
             @Override
             public String toString(Object object) {
@@ -652,39 +692,44 @@ public class UiPresentation {
             label.setText(localString(field.name, context));
             label.setLabelFor(content);
             label.getStyleClass().add("bordered-titled-title");
+            label.setContentDisplay(ContentDisplay.RIGHT);
 
             StackPane.setAlignment(label, Pos.TOP_CENTER);
             pane.getChildren().setAll(content, label);
             if (field.maxWidth != 0) {
                 pane.setMaxWidth(field.maxWidth);
             }
-            label.setOnMouseClicked(new EventHandler<>() {
-                boolean stateChanged = false;
-                Property<Object> obj = context.createJsonProperty();
-                TextArea area = new TextArea();
 
-                {
-                    area.getStyleClass().add("bordered-titled-content");
-                    area.setMinWidth(400);
-                    area.setPrefWidth(400);
-                    area.setFont(Font.font("monospace"));
-                }
+            Button rawButton = new Button("raw");
+            Button okButton = new Button("ok");
+            Button cancelButton = new Button("cancel");
 
-                @Override
-                public void handle(MouseEvent e) {
-                    if (e.getClickCount() < 2) {
-                        return;
-                    }
-                    if (stateChanged) {
-                        pane.getChildren().set(0, content);
-                        obj.setValue(json.elementFromText(area.getText()));
-                    } else {
-                        area.setText(json.elementToText(obj.getValue()));
-                        pane.getChildren().set(0, area);
-                    }
-                    pane.requestLayout();
-                    stateChanged = !stateChanged;
-                }
+            HBox buttons = new HBox();
+            buttons.getChildren().setAll(rawButton);
+            buttons.getStyleClass().add("tiny-button-bar");
+            label.setGraphic(buttons);
+
+            TextArea area = new TextArea();
+            String path = context.path();
+            rawButton.setOnAction(e -> {
+                buttons.getChildren().setAll(okButton, cancelButton);
+                area.setText(json.elementToText(context.get(path)));
+                pane.getChildren().set(0, area);
+                pane.requestLayout();
+                e.consume();
+            });
+            cancelButton.setOnAction(e -> {
+                pane.getChildren().set(0, content);
+                pane.requestLayout();
+                buttons.getChildren().setAll(rawButton);
+                e.consume();
+            });
+            okButton.setOnAction(e -> {
+                buttons.getChildren().setAll(rawButton);
+                pane.getChildren().set(0, content);
+                context.apply(path, json.elementFromText(area.getText()));
+                pane.requestLayout();
+                e.consume();
             });
             registerDirty(context, pane);
             return Collections.singletonList(pane);
@@ -715,41 +760,6 @@ public class UiPresentation {
         pane.setAnimated(false);
 
         TitledPaneSkin skin = new TitledPaneSkin(pane) {
-            {
-                Node label = getChildren().get(1);
-                label.setOnMouseClicked(new EventHandler<>() {
-                    boolean stateChanged = false;
-                    Property<Object> obj = context.createJsonProperty();
-                    TextArea area = new TextArea();
-
-                    {
-                        area.getStyleClass().add("bordered-titled-content");
-                        area.setMinWidth(400);
-                        area.setPrefWidth(400);
-                        area.setMinHeight(400);
-                        area.setPrefHeight(400);
-                        area.setFont(Font.font("monospace"));
-                    }
-
-                    @Override
-                    public void handle(MouseEvent e) {
-                        if (e.getClickCount() < 2) {
-                            return;
-                        }
-                        if (stateChanged) {
-                            pane.setContent(box);
-                            obj.setValue(json.elementFromText(area.getText()));
-                        } else {
-                            area.setText(json.elementToText(obj.getValue()));
-                            pane.setContent(area);
-                        }
-                        pane.requestLayout();
-                        stateChanged = !stateChanged;
-                        e.consume();
-                    }
-                });
-            }
-
             /**
              * {@inheritDoc}
              */
@@ -759,6 +769,45 @@ public class UiPresentation {
                 return super.computePrefHeight(width - rightInset - leftInset, topInset, rightInset, bottomInset, leftInset);
             }
         };
+        if (field.id != null) {
+            BorderPane titlePane = new BorderPane();
+            titlePane.setLeft(new Label(pane.getText()));
+            titlePane.setCenter(new Label(" "));
+            pane.setContentDisplay(ContentDisplay.GRAPHIC_ONLY);
+            pane.setGraphic(titlePane);
+
+            Button rawButton = new Button("raw");
+            Button okButton = new Button("ok");
+            Button cancelButton = new Button("cancel");
+
+            HBox buttons = new HBox();
+            buttons.getChildren().setAll(rawButton);
+            buttons.getStyleClass().add("tiny-button-bar");
+            titlePane.setRight(buttons);
+
+            TextArea area = new TextArea();
+            String path = context.path();
+            rawButton.setOnAction(e -> {
+                buttons.getChildren().setAll(okButton, cancelButton);
+                area.setText(json.elementToText(context.get(path)));
+                pane.setContent(area);
+                pane.requestLayout();
+                e.consume();
+            });
+            cancelButton.setOnAction(e -> {
+                pane.setContent(box);
+                pane.requestLayout();
+                buttons.getChildren().setAll(rawButton);
+                e.consume();
+            });
+            okButton.setOnAction(e -> {
+                buttons.getChildren().setAll(rawButton);
+                pane.setContent(box);
+                context.apply(path, json.elementFromText(area.getText()));
+                pane.requestLayout();
+                e.consume();
+            });
+        }
         pane.setSkin(skin);
         pane.setCollapsible(field.fillWidth);
         if (field.maxWidth != 0) {

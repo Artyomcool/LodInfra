@@ -35,7 +35,7 @@ public class Context {
         data = localData;
     }
 
-    private String path() {
+    public String path() {
         String path = String.join("/", (Iterable<String>) this.path::descendingIterator);
         if (path.contains("${")) {
             Map<String, Object> params = new HashMap<>();
@@ -58,10 +58,18 @@ public class Context {
         return path;
     }
 
+    public Object get(String path) {
+        return get(path.split("/"));
+    }
+
     Object get(String[] path) {
         Object d = data;
         for (int i = 0; i < path.length; ) {
-            d = ((Map) d).get(path[i++]);
+            String tp = path[i++];
+            if ("".equals(tp)) {
+                continue;
+            }
+            d = ((Map) d).get(tp);
             if (i == path.length) {
                 break;
             }
@@ -125,9 +133,13 @@ public class Context {
                 break;
             }
         }
+        boolean changed = false;
         if (d instanceof Map) {
             Object old = value == null ? ((Map) d).remove(path[path.length - 1]) : ((Map) d).put(path[path.length - 1], value);
-            pushUndo(path, old, undo);
+            if (!Objects.equals(Helpers.string(old), Helpers.string(value))) {
+                pushUndo(path, old, undo);
+                changed = true;
+            }
         } else if (d instanceof List) {
             String p = path[path.length - 1];
             String[] split = p.split("\\?", -1);
@@ -142,16 +154,22 @@ public class Context {
                 lst.add(null);
             }
             if (!trimList) {
-                pushUndo(path, lst.get(t), undo);
+                Object old = lst.get(t);
+                if (!Objects.equals(Helpers.string(old), Helpers.string(value))) {
+                    pushUndo(path, old, undo);
+                    changed = true;
+                }
             }
             lst.set(t, value);
         }
 
         String key = String.join("/", path);
         if (!undo) {
-            markDirty(key);
+            if (changed) {
+                markDirty(key);
+            }
         }
-        if (notify) {
+        if (notify && changed) {
             inNotifyProcess = true;
             for (StringProperty property : properties.getOrDefault(key, Collections.emptyList())) {
                 property.setValue(Helpers.string(value));
@@ -194,7 +212,7 @@ public class Context {
         return get(path);
     }
 
-    public Property<Object> createJsonProperty() {  // FIXME
+    public Property<Object> createRawProperty() {  // FIXME
         String key = this.path();
         String[] path = key.split("/");
 
@@ -340,6 +358,42 @@ public class Context {
         Runnable u = undo.poll();
         if (u != null) {
             u.run();
+        }
+    }
+
+    public void apply(String path, Object element) {
+        applyInternal(path, element);
+    }
+
+    private void applyInternal(String path, Object element) {
+        if (path.startsWith("/")) {
+            path = path.substring(1);
+        }
+        if (element instanceof List) {
+            List newList = (List) element;
+            List oldList = (List) get(path);
+            if (newList.size() < oldList.size()) {
+                // FIXME
+                throw new UnsupportedOperationException("Can't reduce size of list " + path);
+            } else {
+                for (int i = 0; i < newList.size(); i++) {
+                    applyInternal(path + "/" + i, newList.get(i));
+                    // TODO add?
+                }
+            }
+        } else if (element instanceof Map) {
+            Map<?,?> newMap = (Map) element;
+            Map oldMap = (Map) get(path);
+
+            Set<String> keys = new HashSet<>(oldMap.keySet());
+            for (Map.Entry<?,?> entry : newMap.entrySet()) {
+                if (!keys.remove(entry.getKey())) {
+                    // TODO add
+                }
+                applyInternal(path + "/" + entry.getKey(), entry.getValue());
+            }
+        } else {
+            set(path.split("/"), element, true, false);
         }
     }
 
