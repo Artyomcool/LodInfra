@@ -700,37 +700,39 @@ public class UiPresentation {
                 pane.setMaxWidth(field.maxWidth);
             }
 
-            Button rawButton = new Button("raw");
-            Button okButton = new Button("ok");
-            Button cancelButton = new Button("cancel");
+            if (field.id != null) {
+                Button rawButton = new Button("raw");
+                Button okButton = new Button("ok");
+                Button cancelButton = new Button("cancel");
 
-            HBox buttons = new HBox();
-            buttons.getChildren().setAll(rawButton);
-            buttons.getStyleClass().add("tiny-button-bar");
-            label.setGraphic(buttons);
+                HBox buttons = new HBox();
+                buttons.getChildren().setAll(rawButton);
+                buttons.getStyleClass().add("tiny-button-bar");
+                label.setGraphic(buttons);
 
-            TextArea area = new TextArea();
-            String path = context.path();
-            rawButton.setOnAction(e -> {
-                buttons.getChildren().setAll(okButton, cancelButton);
-                area.setText(json.elementToText(context.get(path)));
-                pane.getChildren().set(0, area);
-                pane.requestLayout();
-                e.consume();
-            });
-            cancelButton.setOnAction(e -> {
-                pane.getChildren().set(0, content);
-                pane.requestLayout();
-                buttons.getChildren().setAll(rawButton);
-                e.consume();
-            });
-            okButton.setOnAction(e -> {
-                buttons.getChildren().setAll(rawButton);
-                pane.getChildren().set(0, content);
-                context.apply(path, json.elementFromText(area.getText()));
-                pane.requestLayout();
-                e.consume();
-            });
+                TextArea area = new TextArea();
+                String path = context.path();
+                rawButton.setOnAction(e -> {
+                    buttons.getChildren().setAll(okButton, cancelButton);
+                    area.setText(json.elementToText(context.get(path)));
+                    pane.getChildren().set(0, area);
+                    pane.requestLayout();
+                    e.consume();
+                });
+                cancelButton.setOnAction(e -> {
+                    pane.getChildren().set(0, content);
+                    pane.requestLayout();
+                    buttons.getChildren().setAll(rawButton);
+                    e.consume();
+                });
+                okButton.setOnAction(e -> {
+                    buttons.getChildren().setAll(rawButton);
+                    pane.getChildren().set(0, content);
+                    context.apply(path, json.elementFromText(area.getText()));
+                    pane.requestLayout();
+                    e.consume();
+                });
+            }
             registerDirty(context, pane);
             return Collections.singletonList(pane);
         }
