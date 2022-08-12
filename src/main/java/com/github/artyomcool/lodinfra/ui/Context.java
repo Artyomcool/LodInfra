@@ -280,7 +280,7 @@ public class Context {
     }
 
     public void push(String id, Map<String, Object> vars) {
-        if (id != null) {
+        if (id != null && !"".equals(id)) {
             path.push(id);
         }
         if (vars != null) {
@@ -294,7 +294,7 @@ public class Context {
     }
 
     public void pop(Field field) {
-        if (field.id != null) {
+        if (field.id != null && !"".equals(field.id)) {
             path.pop();
         }
         if (field.vars != null) {

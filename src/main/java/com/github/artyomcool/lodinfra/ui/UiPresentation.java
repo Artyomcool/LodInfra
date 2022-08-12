@@ -22,6 +22,8 @@ import javafx.scene.Node;
 import javafx.scene.Parent;
 import javafx.scene.control.*;
 import javafx.scene.control.skin.TitledPaneSkin;
+import javafx.scene.input.Clipboard;
+import javafx.scene.input.ClipboardContent;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.MouseEvent;
 import javafx.scene.layout.*;
@@ -33,6 +35,7 @@ import javafx.util.StringConverter;
 import org.controlsfx.control.textfield.CustomTextField;
 
 import java.util.*;
+import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.stream.Collectors;
 
@@ -701,37 +704,13 @@ public class UiPresentation {
             }
 
             if (field.id != null) {
-                Button rawButton = new Button("raw");
-                Button okButton = new Button("ok");
-                Button cancelButton = new Button("cancel");
-
-                HBox buttons = new HBox();
-                buttons.getChildren().setAll(rawButton);
-                buttons.getStyleClass().add("tiny-button-bar");
-                label.setGraphic(buttons);
-
-                TextArea area = new TextArea();
-                String path = context.path();
-                rawButton.setOnAction(e -> {
-                    buttons.getChildren().setAll(okButton, cancelButton);
-                    area.setText(json.elementToText(context.get(path)));
-                    pane.getChildren().set(0, area);
-                    pane.requestLayout();
-                    e.consume();
-                });
-                cancelButton.setOnAction(e -> {
-                    pane.getChildren().set(0, content);
-                    pane.requestLayout();
-                    buttons.getChildren().setAll(rawButton);
-                    e.consume();
-                });
-                okButton.setOnAction(e -> {
-                    buttons.getChildren().setAll(rawButton);
-                    pane.getChildren().set(0, content);
-                    context.apply(path, json.elementFromText(area.getText()));
-                    pane.requestLayout();
-                    e.consume();
-                });
+                label.setGraphic(
+                        createButtons(
+                                context,
+                                200,
+                                textArea -> pane.getChildren().set(0, textArea == null ? content : textArea)
+                        )
+                );
             }
             registerDirty(context, pane);
             return Collections.singletonList(pane);
@@ -778,37 +757,13 @@ public class UiPresentation {
             pane.setContentDisplay(ContentDisplay.GRAPHIC_ONLY);
             pane.setGraphic(titlePane);
 
-            Button rawButton = new Button("raw");
-            Button okButton = new Button("ok");
-            Button cancelButton = new Button("cancel");
-
-            HBox buttons = new HBox();
-            buttons.getChildren().setAll(rawButton);
-            buttons.getStyleClass().add("tiny-button-bar");
-            titlePane.setRight(buttons);
-
-            TextArea area = new TextArea();
-            String path = context.path();
-            rawButton.setOnAction(e -> {
-                buttons.getChildren().setAll(okButton, cancelButton);
-                area.setText(json.elementToText(context.get(path)));
-                pane.setContent(area);
-                pane.requestLayout();
-                e.consume();
-            });
-            cancelButton.setOnAction(e -> {
-                pane.setContent(box);
-                pane.requestLayout();
-                buttons.getChildren().setAll(rawButton);
-                e.consume();
-            });
-            okButton.setOnAction(e -> {
-                buttons.getChildren().setAll(rawButton);
-                pane.setContent(box);
-                context.apply(path, json.elementFromText(area.getText()));
-                pane.requestLayout();
-                e.consume();
-            });
+            titlePane.setRight(
+                    createButtons(
+                            context,
+                            300,
+                            textArea -> pane.setContent(textArea == null ? box : textArea)
+                    )
+            );
         }
         pane.setSkin(skin);
         pane.setCollapsible(field.fillWidth);
@@ -818,6 +773,52 @@ public class UiPresentation {
         pane.setPadding(padding);
         registerDirty(context, pane);
         return Collections.singletonList(pane);
+    }
+
+    private Node createButtons(Context context, int minHeight, Consumer<TextArea> showHide) {
+
+        Button rawButton = new Button("e");
+        Button copyButton = new Button("c");
+        Button pasteButton = new Button("p");
+        Button okButton = new Button("ok");
+        Button cancelButton = new Button("cancel");
+
+        HBox buttons = new HBox();
+        buttons.getChildren().setAll(rawButton, copyButton, pasteButton);
+        buttons.getStyleClass().add("tiny-button-bar");
+
+        TextArea area = new TextArea();
+        area.setMinHeight(minHeight);
+        String path = context.path();
+        rawButton.setOnAction(e -> {
+            showHide.accept(area);
+            buttons.getChildren().setAll(okButton, cancelButton);
+            area.setText(json.elementToText(context.get(path)));
+            e.consume();
+        });
+        cancelButton.setOnAction(e -> {
+            showHide.accept(null);
+            buttons.getChildren().setAll(rawButton, copyButton, pasteButton);
+            e.consume();
+        });
+        okButton.setOnAction(e -> {
+            showHide.accept(null);
+            context.apply(path, json.elementFromText(area.getText()));
+            buttons.getChildren().setAll(rawButton, copyButton, pasteButton);
+            e.consume();
+        });
+        copyButton.setOnAction(e -> {
+            Clipboard clipboard = Clipboard.getSystemClipboard();
+            ClipboardContent content = new ClipboardContent();
+            content.putString(json.elementToText(context.get(path)));
+            clipboard.setContent(content);
+        });
+        pasteButton.setOnAction(e -> {
+            Clipboard clipboard = Clipboard.getSystemClipboard();
+            context.apply(path, json.elementFromText(clipboard.getString()));
+        });
+
+        return buttons;
     }
 
     public void registerDirty(Context context, Node node) {
@@ -847,8 +848,8 @@ public class UiPresentation {
         String countGroup = Helpers.evalString(group[group.length - 1], context.params());
         boolean allowAdd;
         int count;
-        List<Object> contextValue = (List<Object>) context.currentValue();
         if (countGroup.isEmpty()) {
+            List<Object> contextValue = (List<Object>) context.currentValue();
             count = contextValue.size();
             allowAdd = true;
         } else {
@@ -960,6 +961,7 @@ public class UiPresentation {
                 context.pop();
             }
             if (allowAdd) {
+                List<Object> contextValue = (List<Object>) context.currentValue();
                 Button e = new Button();
                 e.setText("+");
                 e.setOnAction(a -> contextValue.add(new HashMap<>()));

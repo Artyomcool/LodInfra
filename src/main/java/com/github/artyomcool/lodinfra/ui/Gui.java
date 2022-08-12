@@ -60,6 +60,7 @@ public class Gui extends Application {
     private Stage primaryStage;
 
     public Gui(Path cfg) throws IOException {
+        System.out.println(cfg);
         this.config = json.loadConfig(cfg);
         this.format = config.formats.get("dat");
     }
@@ -252,7 +253,7 @@ public class Gui extends Application {
             allTabs().forEach(tab -> {
                 Alias alias = format.aliases.get(tab.alias);
                 List<Map<String, Object>> entries = new AliasProcessor(format.processors, alias).read(p, config);
-                data.put(tab.id, entries.stream().map(DataEntry::new).toList());
+                data.put(tab.id, new ArrayList<>(entries.stream().map(DataEntry::new).toList()));
             });
             initTabs(root);
         }
