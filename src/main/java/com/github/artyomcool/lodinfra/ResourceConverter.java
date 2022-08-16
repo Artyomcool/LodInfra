@@ -169,6 +169,10 @@ public class ResourceConverter {
         int colorsUsed = data.getInt();
         int colorsImportant = data.getInt();
 
+        if (colorsUsed == 0 && bpp == 8) {
+            colorsUsed = 256;
+        }
+
         boolean topToBottom = height < 0;
         height = Math.abs(height);
 
@@ -185,7 +189,6 @@ public class ResourceConverter {
             out.putInt(height);
 
             int lineSize = (width * 3 + 3) / 4 * 4;
-            int extraBytes = lineSize - width * 3;
 
             int y, end, inc;
             if (topToBottom) {
@@ -198,7 +201,9 @@ public class ResourceConverter {
                 inc = -1;
             }
 
+            int position = data.position();
             for (; y != end; y += inc) {
+                data.position(position + lineSize * y);
                 for (int x = 0; x < width; x++) {
                     byte b = data.get();
                     byte g = data.get();
@@ -207,7 +212,6 @@ public class ResourceConverter {
                     out.put(g);
                     out.put(r);
                 }
-                data.position(data.position() + extraBytes);
             }
         } else {
             out = ByteBuffer.allocate(12 + 256 * 3 + size).order(ByteOrder.LITTLE_ENDIAN);
