@@ -20,7 +20,7 @@ jobs:
           prerelease: true
           title: "Development Build"
   perform-release-windows:
-    runs-on: windows-latest
+    runs-on: windows-2019
     needs: create-release
     steps:
       - uses: actions/checkout@v2
