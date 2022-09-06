@@ -250,6 +250,9 @@ public class ResourceConverter {
             for (int i = 0; i < colorsUsed; i++) {
                 out.put(r[i]).put(g[i]).put(b[i]);
             }
+            for (int i = colorsUsed; i < 256; i++) {
+                out.put((byte) 0).put((byte) 0).put((byte) 0);
+            }
         }
 
         return out.flip();
