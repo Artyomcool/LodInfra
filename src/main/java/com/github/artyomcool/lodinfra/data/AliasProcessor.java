@@ -356,12 +356,16 @@ public class AliasProcessor {
         } else {
             dst = (List) serialized.get(offset);
         }
+        append(array, dst);
+    }
+
+    private static void append(List<?> array, List dst) {
         dst.addAll(array);
         dst.sort((o1, o2) -> {
             if (o1 instanceof Map && o2 instanceof Map) {
-                Integer order1 = ((Map<String, Integer>) o1).getOrDefault("#order", Integer.MAX_VALUE);
-                Integer order2 = ((Map<String, Integer>) o2).getOrDefault("#order", Integer.MAX_VALUE);
-                return Integer.compare(order1, order2);
+                String order1 = ((Map<String, String>) o1).getOrDefault("#order", "\uffff");
+                String order2 = ((Map<String, String>) o2).getOrDefault("#order", "\uffff");
+                return order1.compareTo(order2);
             }
             return 0;
         });
@@ -428,7 +432,7 @@ public class AliasProcessor {
                     AliasProcessor.this.append(array, Integer.parseInt(lastPart), (List) s);
                 } else {
                     List dst = (List) ((Map) s).computeIfAbsent(lastPart, k -> new ArrayList<>());
-                    dst.addAll(array);
+                    AliasProcessor.append(array, dst);
                 }
             }
         };
@@ -522,6 +526,9 @@ public class AliasProcessor {
         for (Map.Entry<String, Object> entry : struct.entrySet()) {
             String alias = entry.getKey();
             if (alias.startsWith("#")) {
+                if (alias.equals("#order")) {
+                    ((Map)serialized).put("#order", ((Map)data).get("#order"));
+                }
                 continue;
             }
             String path = (String) entry.getValue();

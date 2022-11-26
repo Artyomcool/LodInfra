@@ -53,6 +53,7 @@ public class Helpers {
             return matcher.group(((Number) objects.get(2)).intValue());
         });
         stdFunctions.put("num", objects -> Long.parseLong(string(objects.get(0))));
+        stdFunctions.put("pad", objects -> String.format("%" + Long.parseLong(string(objects.get(1))) + "s", string(objects.get(0))));
         return stdFunctions;
     }
 
