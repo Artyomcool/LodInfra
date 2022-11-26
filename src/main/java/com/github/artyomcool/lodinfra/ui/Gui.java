@@ -2,39 +2,20 @@ package com.github.artyomcool.lodinfra.ui;
 
 import com.github.artyomcool.lodinfra.data.AliasProcessor;
 import com.github.artyomcool.lodinfra.data.FormatParser;
-import com.github.artyomcool.lodinfra.data.Helpers;
 import com.github.artyomcool.lodinfra.data.JsonSerializer;
 import com.github.artyomcool.lodinfra.data.dto.*;
-import com.jfoenix.controls.JFXChipView;
-import impl.org.controlsfx.skin.SearchableComboBoxSkin;
 import javafx.application.Application;
-import javafx.beans.binding.Bindings;
-import javafx.beans.property.Property;
-import javafx.beans.property.SimpleStringProperty;
-import javafx.beans.property.StringProperty;
-import javafx.beans.value.ChangeListener;
-import javafx.beans.value.ObservableValue;
-import javafx.collections.FXCollections;
-import javafx.collections.ListChangeListener;
-import javafx.event.EventHandler;
 import javafx.geometry.Insets;
-import javafx.geometry.Orientation;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
-import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
-import javafx.scene.control.skin.TitledPaneSkin;
-import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyCombination;
-import javafx.scene.input.MouseEvent;
-import javafx.scene.layout.*;
-import javafx.scene.paint.Color;
-import javafx.scene.text.Font;
+import javafx.scene.layout.Priority;
+import javafx.scene.layout.StackPane;
+import javafx.scene.layout.VBox;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
-import javafx.util.StringConverter;
-import org.controlsfx.control.textfield.CustomTextField;
 
 import java.io.*;
 import java.nio.file.Files;
@@ -42,14 +23,13 @@ import java.nio.file.Path;
 import java.util.*;
 import java.util.function.Consumer;
 import java.util.prefs.Preferences;
-import java.util.regex.Matcher;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public class Gui extends Application {
 
     private String lang = "Ru";
-    private JsonSerializer json = new JsonSerializer(lang);
+    private final JsonSerializer json = new JsonSerializer(lang);
 
     final Config config;
     final Format format;

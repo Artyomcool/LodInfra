@@ -202,6 +202,10 @@ public class AliasProcessor {
         }
 
         String stop = (String) fields.get("#stopon");
+        String order = (String) fields.get("#order");
+        if (order != null) {
+            result.put("#order", Helpers.evalString(order, params));
+        }
 
         for (Map.Entry<String, ?> entry : fields.entrySet()) {
             String name = Helpers.evalString(entry.getKey(), params);
@@ -353,6 +357,14 @@ public class AliasProcessor {
             dst = (List) serialized.get(offset);
         }
         dst.addAll(array);
+        dst.sort((o1, o2) -> {
+            if (o1 instanceof Map && o2 instanceof Map) {
+                Integer order1 = ((Map<String, Integer>) o1).getOrDefault("#order", Integer.MAX_VALUE);
+                Integer order2 = ((Map<String, Integer>) o2).getOrDefault("#order", Integer.MAX_VALUE);
+                return Integer.compare(order1, order2);
+            }
+            return 0;
+        });
     }
 
     private Put forPut(String path, Map<String, Object> params, Object serialized, String fullPath) {
