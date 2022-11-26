@@ -10,9 +10,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.time.Instant;
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.Properties;
+import java.util.*;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.zip.DataFormatException;
@@ -20,14 +18,24 @@ import java.util.zip.Inflater;
 
 public class Pack {
 
-    public static void main(String[] args) throws IOException {
+    public static void main(String[] a) throws IOException {
         try {
-            Path self = Path.of(".").normalize().toAbsolutePath();
-            if (args.length == 0) {
+            String selfPath = ".";
+            List<String> args = new ArrayList<>(Arrays.asList(a));
+            for (Iterator<String> iterator = args.iterator(); iterator.hasNext(); ) {
+                String arg = iterator.next();
+                if (arg.startsWith("-W")) {
+                    iterator.remove();
+                    selfPath = arg;
+                    break;
+                }
+            }
+            Path self = Path.of(selfPath).normalize().toAbsolutePath();
+            if (args.isEmpty()) {
                 execConfig(self);
-            } else if (args[0].equals("-unpack")) {
-                execUnpack(self, args[1], args[2], args[3], args[4], args[5]);
-            } else if (args[0].equals("-gui")) {
+            } else if (args.get(0).equals("-unpack")) {
+                execUnpack(self, args.get(1), args.get(2), args.get(3), args.get(4), args.get(5));
+            } else if (args.get(0).equals("-gui")) {
                 execGui(self, args);
             } else {
                 execPack(self, args);
@@ -53,7 +61,7 @@ public class Pack {
         Application.launch(ConfigGui.class);
     }
 
-    private static void execPack(Path self, String... args) throws DataFormatException, IOException {
+    private static void execPack(Path self, List<String> args) throws DataFormatException, IOException {
         Properties properties = getArguments(self, args);
 
         String pathPattern = properties.getProperty("outputPattern");
@@ -117,9 +125,12 @@ public class Pack {
         }
     }
 
-    private static Properties getArguments(Path self, String... args) throws IOException {
+    private static Properties getArguments(Path self, List<String> args) throws IOException {
         Properties properties = loadProperties(self);
         for (String arg : args) {
+            if (arg.startsWith("-W")) {
+                continue;
+            }
             if (!arg.startsWith("-P")) {
                 throw new IllegalArgumentException("Unknown argument: " + arg);
             }
@@ -232,11 +243,11 @@ public class Pack {
         bye();
     }
 
-    private static void execGui(Path self, String... args) throws Exception {
+    private static void execGui(Path self, List<String> args) throws Exception {
         System.setProperty("prism.lcdtext", "false");
         System.setProperty("prism.subpixeltext", "false");
 
-        Properties arguments = getArguments(self, Arrays.copyOfRange(args, 1, args.length));
+        Properties arguments = getArguments(self, args);
 
         AtomicReference<Throwable> error = new AtomicReference<>();
 
