@@ -118,6 +118,10 @@ public class Pack {
 
     private static Map<String, Instant> loadTimestamp(Path file, String allowedLangs) {
         try {
+            if (!Files.exists(file)) {
+                System.out.println("No incremental state file");
+                return Collections.emptyMap();
+            }
             String text = Files.readString(file);
             Properties properties = new Properties();
             properties.load(new StringReader(text));
@@ -132,8 +136,9 @@ public class Pack {
                 System.out.println("No incremental state: language changed");
                 return Collections.emptyMap();
             }
-        } catch (Exception ignored) {
-            System.out.println("No valid incremental state");
+        } catch (Exception e) {
+            System.out.println("Incremental state invalid");
+            e.printStackTrace();
             return Collections.emptyMap();
         }
     }
