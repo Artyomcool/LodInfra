@@ -104,7 +104,10 @@ public class ConfigGui extends Application {
 
                         int nextFrom = template.indexOf("}", next);
                         String property = template.substring(next + 2, nextFrom);
-                        String str = properties.getProperty(property, "").replaceAll("\\\\", Matcher.quoteReplacement("\\\\"));
+                        String str = properties.getProperty(property, "");
+                        if (resultFile.endsWith(".config")) {
+                            str = str.replaceAll("\\\\", Matcher.quoteReplacement("\\\\"));
+                        }
                         result.append(str);
 
                         from = nextFrom + 1;

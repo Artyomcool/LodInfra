@@ -284,7 +284,7 @@ public class Pack {
         Properties arguments = getArguments(self, args);
         String out = arguments.getProperty("gui_out");
 
-        Gui gui = new Gui(self.resolve(out));
+        Gui gui = new Gui(Path.of(out));
         run(gui);
     }
 
