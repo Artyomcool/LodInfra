@@ -45,10 +45,12 @@ public class ConfigGui extends Application {
         TextField res = new TextField();
         TextField dropbox = new TextField();
 
+        Path self = Path.of(properties.getProperty("self"));
+
         name.setText(System.getProperty("user.name"));
         game.setText(properties.getProperty("gameDir"));
         res.setText(properties.getProperty("resDir"));
-        dropbox.setText(Path.of(properties.getProperty("self")).getParent().toString());
+        dropbox.setText(self.getParent().toString());
 
         root.getChildren().addAll(
                 withLabel(name, "Ваш ник / Your nick"),
@@ -79,7 +81,7 @@ public class ConfigGui extends Application {
                 properties.setProperty("resDir", res.getText());
                 properties.setProperty("dropboxDir", dropbox.getText());
 
-                Path in = Path.of(dropbox.getText(), templateFile);
+                Path in = self.resolve(templateFile);
                 Path out = Path.of(res.getText(), resultFile);
 
                 try {
