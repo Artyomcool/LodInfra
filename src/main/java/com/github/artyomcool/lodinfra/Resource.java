@@ -27,6 +27,14 @@ public class Resource {
         this.uncompressedSize = uncompressedSize;
     }
 
+    public static String resourceName(Path path) {
+        String name = path.getFileName().toString();
+        String[] nameWithExt = name.split("\\.");
+        String ext = nameWithExt[1];
+        name = nameWithExt[0].split("#")[0] + "." + ext;
+        return sanitizeName(name);
+    }
+
     // TODO move it out
     public static Resource fromPath(String lang, Path path) throws IOException {
         ByteBuffer buffer = ByteBuffer.wrap(Files.readAllBytes(path));
@@ -43,7 +51,7 @@ public class Resource {
                 typeOf(ext, buffer),
                 lang,
                 name,
-                sanitizeName(name),
+                resourceName(path),
                 path.toString(),
                 buffer,
                 0

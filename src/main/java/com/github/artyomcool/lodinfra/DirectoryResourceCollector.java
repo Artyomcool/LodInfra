@@ -24,7 +24,8 @@ public class DirectoryResourceCollector {
 
     public boolean dry = false;
     public boolean logDetailedDiff = false;
-    public Instant ignoreBeforeTimestamp = Instant.MIN;
+    public Map<String, Instant> previouslyModifiedAt = null;
+    public Map<String, Instant> nowModifiedAt = null;
     public int compressionLevel = 0;
     public Set<String> allowedLangs = new HashSet<>();
     public Set<String> dontWarnAboutNames = new HashSet<>();
@@ -86,6 +87,7 @@ public class DirectoryResourceCollector {
         }
 
         Map<Path, LodResources> lodToResource = new LinkedHashMap<>();
+        Map<String, Instant> currentResourcesTimestamps = new HashMap<>();
 
         int ignored = 0;
         int changed = 0;
@@ -93,11 +95,15 @@ public class DirectoryResourceCollector {
         for (Map.Entry<String, List<Path>> entry : xlsFilesByLodName.entrySet()) {
             String lodName = entry.getKey();
             for (Path xlsPath : entry.getValue()) {
-
-                FileTime lastModifiedTime = Files.getLastModifiedTime(xlsPath);
-                if (lastModifiedTime.toInstant().isBefore(ignoreBeforeTimestamp)) {
-                    System.out.println("Xls " + xlsPath + " is modified at " + lastModifiedTime + ", ignoring (last timestamp is " + ignoreBeforeTimestamp + ")");
-                    continue;
+                if (previouslyModifiedAt != null) {
+                    Instant lastModifiedTime = Files.getLastModifiedTime(xlsPath).toInstant();
+                    String resourceName = Resource.resourceName(xlsPath);
+                    Instant previously = previouslyModifiedAt.get(resourceName);
+                    if (lastModifiedTime.equals(previously)) {
+                        System.out.println("Xls " + xlsPath + " is modified at " + lastModifiedTime + ", ignoring (last timestamp is " + previously + ")");
+                        continue;
+                    }
+                    currentResourcesTimestamps.put(resourceName, lastModifiedTime);
                 }
 
                 System.out.println("Collecting texts from " + xlsPath.getFileName());
@@ -128,10 +134,15 @@ public class DirectoryResourceCollector {
 
             LodResources resources = lodToResource.computeIfAbsent(lodPath, k -> new LodResources());
             for (Path path : entry.getValue()) {
-                FileTime lastModifiedTime = Files.getLastModifiedTime(path);
-                if (lastModifiedTime.toInstant().isBefore(ignoreBeforeTimestamp)) {
-                    ignored++;
-                    continue;
+                if (previouslyModifiedAt != null) {
+                    Instant lastModifiedTime = Files.getLastModifiedTime(path).toInstant();
+                    String resourceName = Resource.resourceName(path);
+                    Instant previously = previouslyModifiedAt.get(resourceName);
+                    if (lastModifiedTime.equals(previously)) {
+                        ignored++;
+                        continue;
+                    }
+                    currentResourcesTimestamps.put(resourceName, lastModifiedTime);
                 }
 
                 Resource resource = Resource.fromPath(lang, path);
@@ -150,6 +161,8 @@ public class DirectoryResourceCollector {
         if (logDetailedDiff) {
             writeLog(logsByLod);
         }
+
+        nowModifiedAt = previouslyModifiedAt == null ? null : currentResourcesTimestamps;
     }
 
     private Map<Path, String> writeLods(Map<Path, LodResources> lodToResource) throws IOException, DataFormatException {
@@ -183,8 +196,12 @@ public class DirectoryResourceCollector {
 
                 System.out.println("Write " + lodPath);
                 LodFilePatch lodFilePatch = LodFilePatch.fromPath(lodPath, resourcePreprocessor);
-                if (ignoreBeforeTimestamp.equals(Instant.MIN)) {
+                if (previouslyModifiedAt == null) {
                     lodFilePatch.removeAllFromOriginal();
+                } else {
+                    for (String resourceName : previouslyModifiedAt.keySet()) {
+                        lodFilePatch.removeFromOriginal(resourceName);
+                    }
                 }
 
                 for (Resource resource : entry.getValue().resourcesByName.values()) {
@@ -245,9 +262,9 @@ public class DirectoryResourceCollector {
         logRecord.append("\n");
 
         Files.createDirectories(logPath.getParent());
-        Files.write(
+        Files.writeString(
                 logPath,
-                logRecord.toString().getBytes(StandardCharsets.UTF_8),
+                logRecord,
                 StandardOpenOption.CREATE,
                 StandardOpenOption.WRITE,
                 StandardOpenOption.APPEND

@@ -1,5 +1,6 @@
 package com.github.artyomcool.lodinfra;
 
+import com.github.artyomcool.lodinfra.ui.DiffUi;
 import com.github.artyomcool.lodinfra.ui.Gui;
 import javafx.application.Application;
 import javafx.application.Platform;
@@ -26,19 +27,17 @@ public class Pack {
                 String arg = iterator.next();
                 if (arg.startsWith("-W")) {
                     iterator.remove();
-                    selfPath = arg;
+                    selfPath = arg.substring(2);
                     break;
                 }
             }
             Path self = Path.of(selfPath).normalize().toAbsolutePath();
-            if (args.isEmpty()) {
-                execConfig(self);
-            } else if (args.get(0).equals("-unpack")) {
-                execUnpack(self, args.get(1), args.get(2), args.get(3), args.get(4), args.get(5));
-            } else if (args.get(0).equals("-gui")) {
-                execGui(self, args);
-            } else {
-                execPack(self, args);
+            switch (args.get(0)) {
+                case "-cfg" -> execConfig(self, args.subList(1, args.size()));
+                case "-unpack" -> execUnpack(self, args.get(1), args.get(2), args.get(3), args.get(4), args.get(5));
+                case "-gui" -> execGui(self, args.subList(1, args.size()));
+                case "-diff" -> execDiff(self, args.subList(1, args.size()));
+                default -> execPack(self, args);
             }
         } catch (Exception e) {
             Console c = System.console();
@@ -55,10 +54,37 @@ public class Pack {
         }
     }
 
-    private static void execConfig(Path self) {
+    private static void execConfig(Path self, List<String> args) throws InterruptedException {
+        Properties properties = readProperties(self, "cfg.config", true);
+        applyArgs(args, properties);
+
+        ConfigGui gui = new ConfigGui(properties);
+
+        run(gui);
+    }
+
+    private static void run(Application gui) throws InterruptedException {
         System.setProperty("prism.lcdtext", "false");
         System.setProperty("prism.subpixeltext", "false");
-        Application.launch(ConfigGui.class);
+        CountDownLatch platform = new CountDownLatch(1);
+        Platform.startup(platform::countDown);
+        platform.await();
+
+        AtomicReference<Throwable> error = new AtomicReference<>();
+        CountDownLatch guiStarted = new CountDownLatch(1);
+        Platform.runLater(() -> {
+            try {
+                gui.start(new Stage());
+            } catch (Throwable t) {
+                error.set(t);
+            }
+            guiStarted.countDown();
+        });
+
+        guiStarted.await();
+        if (error.get() != null) {
+            throw new RuntimeException(error.get());
+        }
     }
 
     private static void execPack(Path self, List<String> args) throws DataFormatException, IOException {
@@ -75,9 +101,8 @@ public class Pack {
         String dontWarnAboutNames = properties.getProperty("dontWarnAboutNames", "").toLowerCase();
 
         Path timestampFile = self.resolve("lastTs");
-        Instant now = Instant.now();
         if (checkTimeStamps) {
-            collector.ignoreBeforeTimestamp = loadTimestamp(timestampFile, allowedLangs);
+            collector.previouslyModifiedAt = loadTimestamp(timestampFile, allowedLangs);
         }
         collector.allowedLangs = new HashSet<>(Arrays.asList(allowedLangs.split(",")));
         collector.dontWarnAboutNames = new HashSet<>(Arrays.asList(dontWarnAboutNames.split(",")));
@@ -85,33 +110,40 @@ public class Pack {
         collector.collectResources();
 
         if (checkTimeStamps) {
-            storeTimestamp(timestampFile, now, allowedLangs);
+            storeTimestamp(timestampFile, collector.nowModifiedAt, allowedLangs);
         }
 
         bye();
     }
 
-    private static Instant loadTimestamp(Path file, String allowedLangs) {
+    private static Map<String, Instant> loadTimestamp(Path file, String allowedLangs) {
         try {
             String text = Files.readString(file);
             Properties properties = new Properties();
             properties.load(new StringReader(text));
-            String prevIgnoreLangs = properties.getProperty("allowedLangs");
+            String prevIgnoreLangs = properties.getProperty("*allowedLangs");
             if (prevIgnoreLangs != null && prevIgnoreLangs.equals(allowedLangs)) {
-                return Instant.parse(properties.getProperty("ts"));
+                Map<String, Instant> map = new HashMap<>();
+                for (String name : properties.stringPropertyNames()) {
+                    map.put(name, Instant.parse(properties.getProperty(name)));
+                }
+                return map;
             } else {
                 System.out.println("No incremental state: language changed");
+                return Collections.emptyMap();
             }
         } catch (Exception ignored) {
             System.out.println("No valid incremental state");
+            return Collections.emptyMap();
         }
-        return Instant.MIN;
     }
 
-    private static void storeTimestamp(Path file, Instant now, String allowedLangs) throws IOException {
+    private static void storeTimestamp(Path file, Map<String, Instant> now, String allowedLangs) throws IOException {
         Properties properties = new Properties();
-        properties.put("allowedLangs", allowedLangs);
-        properties.put("ts", now.toString());
+        properties.put("*allowedLangs", allowedLangs);
+        for (Map.Entry<String, Instant> entry : now.entrySet()) {
+            properties.put(entry.getKey(), entry.getValue().toString());
+        }
         StringWriter writer = new StringWriter();
         properties.store(writer, "State of incremental work");
         Files.writeString(file, writer.toString());
@@ -127,6 +159,11 @@ public class Pack {
 
     private static Properties getArguments(Path self, List<String> args) throws IOException {
         Properties properties = loadProperties(self);
+        applyArgs(args, properties);
+        return properties;
+    }
+
+    private static void applyArgs(List<String> args, Properties properties) {
         for (String arg : args) {
             if (arg.startsWith("-W")) {
                 continue;
@@ -137,12 +174,11 @@ public class Pack {
             String[] argToValue = arg.split("[=:]");
             properties.setProperty(argToValue[0].substring(2), argToValue.length > 1 ? argToValue[1] : "");
         }
-        return properties;
     }
 
     private static Properties loadProperties(Path self) throws IOException {
         for (String configName : Arrays.asList("dev.config", "release.config")) {
-            Properties properties = readProperties(self, configName);
+            Properties properties = readProperties(self, configName, false);
             if (properties == null) {
                 continue;
             }
@@ -162,15 +198,16 @@ public class Pack {
         return new Properties();
     }
 
-    private static Properties readProperties(Path self, String configName) {
+    private static Properties readProperties(Path self, String configName, boolean useDefault) {
         Properties properties = new Properties();
+        properties.setProperty("self", self.toAbsolutePath().toString());
         try {
             try (BufferedReader stream = Files.newBufferedReader(self.resolve(configName))) {
                 properties.load(stream);
             }
         } catch (IOException e) {
             System.err.println("No config file with name " + configName);
-            return null;
+            return useDefault ? properties : null;
         }
 
         return properties;
@@ -244,36 +281,22 @@ public class Pack {
     }
 
     private static void execGui(Path self, List<String> args) throws Exception {
-        System.setProperty("prism.lcdtext", "false");
-        System.setProperty("prism.subpixeltext", "false");
-
         Properties arguments = getArguments(self, args);
-
-        AtomicReference<Throwable> error = new AtomicReference<>();
-
-        CountDownLatch platform = new CountDownLatch(1);
-        Platform.startup(platform::countDown);
-        platform.await();
-
         String out = arguments.getProperty("gui_out");
 
         Gui gui = new Gui(self.resolve(out));
-        gui.init();
+        run(gui);
+    }
 
-        CountDownLatch guiStarted = new CountDownLatch(1);
-        Platform.runLater(() -> {
-            try {
-                gui.start(new Stage());
-            } catch (Throwable t) {
-                error.set(t);
-            }
-            guiStarted.countDown();
-        });
+    private static void execDiff(Path self, List<String> args) throws Exception {
+        Properties arguments = getArguments(self, args);
 
-        guiStarted.await();
-        if (error.get() != null) {
-            throw new RuntimeException(error.get());
-        }
+        String leftDir = arguments.getProperty("left_dir");
+        String rightDir = arguments.getProperty("right_dir");
+
+        DiffUi gui = new DiffUi(Path.of(leftDir), Path.of(rightDir));
+
+        run(gui);
     }
 
 }

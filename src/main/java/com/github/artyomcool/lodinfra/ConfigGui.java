@@ -16,13 +16,26 @@ import javafx.stage.DirectoryChooser;
 import javafx.stage.Stage;
 
 import java.io.File;
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.List;
+import java.util.Properties;
+import java.util.regex.Matcher;
 
 public class ConfigGui extends Application {
 
+    private final Properties properties;
+
+    public ConfigGui(Properties properties) {
+        this.properties = properties;
+    }
+
     @Override
     public void start(Stage primaryStage) throws Exception {
+
         VBox root = new VBox();
         Scene scene = new Scene(root);
         scene.getStylesheets().add(getClass().getResource("/theme.css").toExternalForm());
@@ -33,9 +46,9 @@ public class ConfigGui extends Application {
         TextField dropbox = new TextField();
 
         name.setText(System.getProperty("user.name"));
-        game.setText("C:\\Games\\HotA");
-        res.setText("C:\\Games\\HotA_Resources");
-        dropbox.setText(Path.of(".").toFile().getAbsolutePath());
+        game.setText(properties.getProperty("gameDir"));
+        res.setText(properties.getProperty("resDir"));
+        dropbox.setText(properties.getProperty("self"));
 
         root.getChildren().addAll(
                 withLabel(name, "Ваш ник / Your nick"),
@@ -53,6 +66,47 @@ public class ConfigGui extends Application {
         primaryStage.setScene(scene);
         primaryStage.sizeToScene();
         primaryStage.show();
+
+        generate.setOnAction(e -> {
+            String[] fileList = properties.getProperty("fileList").split(";");
+            for (String file : fileList) {
+                String[] split = file.split(":");
+                String templateFile = split[0];
+                String resultFile = split[1];
+
+                properties.setProperty("gameDir", game.getText());
+                properties.setProperty("resDir", res.getText());
+                properties.setProperty("dropboxDir", dropbox.getText());
+
+                Path in = Path.of(dropbox.getText(), templateFile);
+                Path out = Path.of(res.getText(), resultFile);
+
+                try {
+                    String template = Files.readString(in);
+                    StringBuilder result = new StringBuilder();
+                    int from = 0;
+                    while (true) {
+                        int next = template.indexOf("${", from);
+                        if (next == -1) {
+                            result.append(template.substring(from));
+                            break;
+                        }
+                        result.append(template.substring(from, next));
+
+                        int nextFrom = template.indexOf("}", next);
+                        String property = template.substring(next + 2, nextFrom);
+                        String str = properties.getProperty(property, "").replaceAll("\\\\", Matcher.quoteReplacement("\\\\"));
+                        result.append(str);
+
+                        from = nextFrom + 1;
+                    }
+
+                    Files.writeString(out, result);
+                } catch (IOException ex) {
+                    throw new UncheckedIOException(ex);
+                }
+            }
+        });
     }
 
     private Pane pathSelector(TextField field, Stage primaryStage, String name) {
