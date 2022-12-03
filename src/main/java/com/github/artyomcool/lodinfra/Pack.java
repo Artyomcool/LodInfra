@@ -129,6 +129,9 @@ public class Pack {
             if (prevIgnoreLangs != null && prevIgnoreLangs.equals(allowedLangs)) {
                 Map<String, Instant> map = new HashMap<>();
                 for (String name : properties.stringPropertyNames()) {
+                    if (name.startsWith("*")) {
+                        continue;
+                    }
                     map.put(name, Instant.parse(properties.getProperty(name)));
                 }
                 return map;
