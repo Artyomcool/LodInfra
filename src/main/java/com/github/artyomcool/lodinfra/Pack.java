@@ -171,7 +171,7 @@ public class Pack {
             if (!arg.startsWith("-P")) {
                 throw new IllegalArgumentException("Unknown argument: " + arg);
             }
-            String[] argToValue = arg.split("[=:]");
+            String[] argToValue = arg.split("[=:]", 2);
             properties.setProperty(argToValue[0].substring(2), argToValue.length > 1 ? argToValue[1] : "");
         }
     }
