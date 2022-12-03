@@ -48,7 +48,7 @@ public class ConfigGui extends Application {
         name.setText(System.getProperty("user.name"));
         game.setText(properties.getProperty("gameDir"));
         res.setText(properties.getProperty("resDir"));
-        dropbox.setText(properties.getProperty("self"));
+        dropbox.setText(Path.of(properties.getProperty("self")).getParent().toString());
 
         root.getChildren().addAll(
                 withLabel(name, "Ваш ник / Your nick"),
