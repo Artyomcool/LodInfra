@@ -4,6 +4,7 @@ import javafx.application.Application;
 import javafx.geometry.Insets;
 import javafx.scene.Node;
 import javafx.scene.Scene;
+import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.TextField;
@@ -50,7 +51,7 @@ public class ConfigGui extends Application {
         name.setText(System.getProperty("user.name"));
         game.setText(properties.getProperty("gameDir"));
         res.setText(properties.getProperty("resDir"));
-        dropbox.setText(self.getParent().toString());
+        dropbox.setText(self.getParent().getParent().getParent().toString());
 
         root.getChildren().addAll(
                 withLabel(name, "Ваш ник / Your nick"),
@@ -109,6 +110,10 @@ public class ConfigGui extends Application {
                     throw new UncheckedIOException(ex);
                 }
             }
+
+            Alert alert = new Alert(Alert.AlertType.INFORMATION, "Success");
+            alert.setHeaderText("");
+            alert.showAndWait();
         });
     }
 
