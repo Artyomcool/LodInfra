@@ -134,20 +134,24 @@ public class DirectoryResourceCollector {
 
             LodResources resources = lodToResource.computeIfAbsent(lodPath, k -> new LodResources());
             for (Path path : entry.getValue()) {
-                if (previouslyModifiedAt != null) {
-                    Instant lastModifiedTime = Files.getLastModifiedTime(path).toInstant();
-                    String resourceName = Resource.resourceName(path);
-                    Instant previously = previouslyModifiedAt.get(resourceName);
-                    if (lastModifiedTime.equals(previously)) {
-                        ignored++;
-                        continue;
+                try {
+                    if (previouslyModifiedAt != null) {
+                        Instant lastModifiedTime = Files.getLastModifiedTime(path).toInstant();
+                        String resourceName = Resource.resourceName(path);
+                        Instant previously = previouslyModifiedAt.get(resourceName);
+                        if (lastModifiedTime.equals(previously)) {
+                            ignored++;
+                            continue;
+                        }
+                        currentResourcesTimestamps.put(resourceName, lastModifiedTime);
                     }
-                    currentResourcesTimestamps.put(resourceName, lastModifiedTime);
-                }
 
-                Resource resource = Resource.fromPath(lang, path);
-                resources.addResource(resource);
-                changed++;
+                    Resource resource = Resource.fromPath(lang, path);
+                    resources.addResource(resource);
+                    changed++;
+                } catch (Exception e) {
+                    throw new IOException("Exception during handle file: " + path, e);
+                }
             }
         }
 
