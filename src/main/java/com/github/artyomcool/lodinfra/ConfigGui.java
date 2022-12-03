@@ -74,6 +74,7 @@ public class ConfigGui extends Application {
                 String templateFile = split[0];
                 String resultFile = split[1];
 
+                properties.setProperty("userName", name.getText());
                 properties.setProperty("gameDir", game.getText());
                 properties.setProperty("resDir", res.getText());
                 properties.setProperty("dropboxDir", dropbox.getText());
@@ -88,10 +89,10 @@ public class ConfigGui extends Application {
                     while (true) {
                         int next = template.indexOf("${", from);
                         if (next == -1) {
-                            result.append(template.substring(from));
+                            result.append(template, from, template.length());
                             break;
                         }
-                        result.append(template.substring(from, next));
+                        result.append(template, from, next);
 
                         int nextFrom = template.indexOf("}", next);
                         String property = template.substring(next + 2, nextFrom);
