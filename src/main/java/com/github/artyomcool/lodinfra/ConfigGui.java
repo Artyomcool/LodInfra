@@ -72,6 +72,11 @@ public class ConfigGui extends Application {
 
         generate.setOnAction(e -> {
             String[] fileList = properties.getProperty("fileList").split(";");
+            try {
+                Files.createDirectories(Path.of(res.getText()));
+            } catch (IOException ex) {
+                throw new UncheckedIOException(ex);
+            }
             for (String file : fileList) {
                 String[] split = file.split(":");
                 String templateFile = split[0];
