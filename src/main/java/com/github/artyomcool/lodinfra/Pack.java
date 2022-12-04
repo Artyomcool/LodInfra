@@ -113,7 +113,9 @@ public class Pack {
             storeTimestamp(timestampFile, collector.nowModifiedAt, allowedLangs);
         }
 
-        bye();
+        if (Boolean.parseBoolean(properties.getProperty("showBye", "true"))) {
+            bye();
+        }
     }
 
     private static Map<String, Instant> loadTimestamp(Path file, String allowedLangs) {
