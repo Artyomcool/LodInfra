@@ -133,6 +133,13 @@ public class DirectoryResourceCollector {
             LodResources resources = lodToResource.computeIfAbsent(lodPath, k -> new LodResources(lodName));
             for (Path path : entry.getValue()) {
                 try {
+                    String fileName = path.getFileName().toString().toLowerCase();
+                    if (fileName.contains(":")) {
+                        continue;
+                    }
+                    if (fileName.equals("thumbs.db")) {
+                        continue;
+                    }
                     if (previouslyModifiedAt != null) {
                         Instant lastModifiedTime = Files.getLastModifiedTime(path).toInstant();
                         String resourceName = Resource.resourceName(path);

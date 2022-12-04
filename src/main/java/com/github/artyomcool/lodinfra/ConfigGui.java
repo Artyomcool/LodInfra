@@ -54,7 +54,7 @@ public class ConfigGui extends Application {
                 withLabel(name, "Ваш ник / Your nick"),
                 pathSelector(game, primaryStage, "Папка игры / Game dir"),
                 pathSelector(res, primaryStage, "Папка с ресурсами для работы / Resources in progress dir"),
-                pathSelector(dropbox, primaryStage, "Папка с ресурсами в дропбоксе / Resources in dropbox dir")
+                pathSelector(dropbox, primaryStage, "Папка дропбокса / Dropbox dir")
         );
 
         Button generate = new Button("Сгенерировать исполняемые файлы / Generate executables");
