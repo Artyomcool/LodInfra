@@ -6,10 +6,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
-import java.nio.file.attribute.FileTime;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.*;
@@ -87,7 +85,7 @@ public class DirectoryResourceCollector {
         }
 
         Map<Path, LodResources> lodToResource = new LinkedHashMap<>();
-        Map<String, Instant> currentResourcesTimestamps = new HashMap<>();
+        Map<String, Instant> currentResourcesTimestamps = new TreeMap<>();
 
         int ignored = 0;
         int changed = 0;
@@ -98,12 +96,12 @@ public class DirectoryResourceCollector {
                 if (previouslyModifiedAt != null) {
                     Instant lastModifiedTime = Files.getLastModifiedTime(xlsPath).toInstant();
                     String resourceName = Resource.resourceName(xlsPath);
-                    Instant previously = previouslyModifiedAt.get(resourceName);
+                    Instant previously = previouslyModifiedAt.get(lodName + "^" + resourceName);
+                    currentResourcesTimestamps.put(lodName + "^" + resourceName, lastModifiedTime);
                     if (lastModifiedTime.equals(previously)) {
                         System.out.println("Xls " + xlsPath + " is modified at " + lastModifiedTime + ", ignoring (last timestamp is " + previously + ")");
                         continue;
                     }
-                    currentResourcesTimestamps.put(resourceName, lastModifiedTime);
                 }
 
                 System.out.println("Collecting texts from " + xlsPath.getFileName());
@@ -118,7 +116,7 @@ public class DirectoryResourceCollector {
                             continue;
                         }
                         Path lodPath = Utils.resolveTemplate(pathPattern, resource.lang, lodName);
-                        lodToResource.computeIfAbsent(lodPath, k -> new LodResources()).addResource(resource);
+                        lodToResource.computeIfAbsent(lodPath, k -> new LodResources(lodName)).addResource(resource);
                         changed++;
                     }
                 }
@@ -132,18 +130,18 @@ public class DirectoryResourceCollector {
 
             Path lodPath = Utils.resolveTemplate(pathPattern, lang, lodName);
 
-            LodResources resources = lodToResource.computeIfAbsent(lodPath, k -> new LodResources());
+            LodResources resources = lodToResource.computeIfAbsent(lodPath, k -> new LodResources(lodName));
             for (Path path : entry.getValue()) {
                 try {
                     if (previouslyModifiedAt != null) {
                         Instant lastModifiedTime = Files.getLastModifiedTime(path).toInstant();
                         String resourceName = Resource.resourceName(path);
-                        Instant previously = previouslyModifiedAt.get(resourceName);
+                        Instant previously = previouslyModifiedAt.get(lodName + "^" + resourceName);
+                        currentResourcesTimestamps.put(lodName + "^" + resourceName, lastModifiedTime);
                         if (lastModifiedTime.equals(previously)) {
                             ignored++;
                             continue;
                         }
-                        currentResourcesTimestamps.put(resourceName, lastModifiedTime);
                     }
 
                     Resource resource = Resource.fromPath(lang, path);
@@ -182,6 +180,7 @@ public class DirectoryResourceCollector {
 
                 System.out.println("Packing " + lodPath);
                 System.out.println("Preprocess resources");
+                String lodPrefix = entry.getValue().lodName + "^";
 
                 for (Map.Entry<String, Resource> resource : entry.getValue().resourcesByName.entrySet()) {
                     String lowName = resource.getValue().name.toLowerCase();
@@ -204,7 +203,9 @@ public class DirectoryResourceCollector {
                     lodFilePatch.removeAllFromOriginal();
                 } else {
                     for (String resourceName : previouslyModifiedAt.keySet()) {
-                        lodFilePatch.removeFromOriginal(resourceName);
+                        if (resourceName.startsWith(lodPrefix)) {
+                            lodFilePatch.removeFromOriginal(resourceName);
+                        }
                     }
                 }
 
@@ -277,7 +278,12 @@ public class DirectoryResourceCollector {
 
 
     private static class LodResources {
+        final String lodName;
         final Map<String, Resource> resourcesByName = new LinkedHashMap<>();
+
+        LodResources(String lodName) {
+            this.lodName = lodName;
+        }
 
         public void addResource(Resource resource) throws IOException {
             Resource old = resourcesByName.put(resource.sanitizedName, resource);

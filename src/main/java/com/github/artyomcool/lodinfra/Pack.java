@@ -127,7 +127,7 @@ public class Pack {
             properties.load(new StringReader(text));
             String prevIgnoreLangs = properties.getProperty("*allowedLangs");
             if (prevIgnoreLangs != null && prevIgnoreLangs.equals(allowedLangs)) {
-                Map<String, Instant> map = new HashMap<>();
+                Map<String, Instant> map = new TreeMap<>();
                 for (String name : properties.stringPropertyNames()) {
                     if (name.startsWith("*")) {
                         continue;

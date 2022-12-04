@@ -12,7 +12,6 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.Pane;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
-import javafx.scene.text.Text;
 import javafx.stage.DirectoryChooser;
 import javafx.stage.Stage;
 
@@ -21,8 +20,6 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
-import java.util.List;
 import java.util.Properties;
 import java.util.regex.Matcher;
 
@@ -77,15 +74,16 @@ public class ConfigGui extends Application {
             } catch (IOException ex) {
                 throw new UncheckedIOException(ex);
             }
+
+            properties.setProperty("userName", name.getText());
+            properties.setProperty("gameDir", game.getText());
+            properties.setProperty("resDir", res.getText());
+            properties.setProperty("dropboxDir", dropbox.getText());
+
             for (String file : fileList) {
                 String[] split = file.split(":");
                 String templateFile = split[0];
                 String resultFile = split[1];
-
-                properties.setProperty("userName", name.getText());
-                properties.setProperty("gameDir", game.getText());
-                properties.setProperty("resDir", res.getText());
-                properties.setProperty("dropboxDir", dropbox.getText());
 
                 Path in = self.resolve(templateFile);
                 Path out = Path.of(res.getText(), resultFile);
