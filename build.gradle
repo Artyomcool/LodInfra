@@ -109,7 +109,7 @@ jlink {
     launcher {
         name = 'pack'
         noConsole = false
-        jvmArgs += opens
+        jvmArgs += opens + '-Xmx1g'
     }
 
     mergedModule {
