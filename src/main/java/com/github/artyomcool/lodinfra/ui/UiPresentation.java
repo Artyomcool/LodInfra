@@ -770,6 +770,9 @@ public class UiPresentation {
         if (field.maxWidth != 0) {
             box.setMaxWidth(field.maxWidth);
         }
+        if ("grow".equals(field.option)) {
+            grow(pane);
+        }
         pane.setPadding(padding);
         registerDirty(context, pane);
         return Collections.singletonList(pane);
@@ -901,7 +904,6 @@ public class UiPresentation {
                         }
                     }
                     setGraphic(group);
-                    group.setBackground(new Background(new BackgroundFill(Color.ALICEBLUE, null, null)));
                 }
             });
             List<Node> r = new ArrayList<>();
