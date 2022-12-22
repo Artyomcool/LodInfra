@@ -7,8 +7,8 @@ class Utils {
 
     static final Charset cp1251 = Charset.forName("cp1251");
 
-    public static Path resolveTemplate(String pattern, String lang, String lod) {
+    public static Path resolveTemplate(Path self, String pattern, String lang, String lod) {
         String path = pattern.replace("#lang#", lang).replace("#lod#", lod);
-        return Path.of(path + ".lod");
+        return self.resolve(path + ".lod");
     }
 }

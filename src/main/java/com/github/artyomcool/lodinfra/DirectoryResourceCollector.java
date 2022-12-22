@@ -20,6 +20,7 @@ public class DirectoryResourceCollector {
     public final Path dir;
     public final String pathPattern;
 
+    public String logPath = "logs";
     public boolean dry = false;
     public boolean logDetailedDiff = false;
     public Map<String, Instant> previouslyModifiedAt = null;
@@ -115,7 +116,7 @@ public class DirectoryResourceCollector {
                         if (!allowedLangs.isEmpty() && !allowedLangs.contains(resource.lang)) {
                             continue;
                         }
-                        Path lodPath = Utils.resolveTemplate(pathPattern, resource.lang, lodName);
+                        Path lodPath = Utils.resolveTemplate(dir, pathPattern, resource.lang, lodName);
                         lodToResource.computeIfAbsent(lodPath, k -> new LodResources(lodName)).addResource(resource);
                         changed++;
                     }
@@ -128,7 +129,7 @@ public class DirectoryResourceCollector {
             String lang = parts[0];
             String lodName = parts[1];
 
-            Path lodPath = Utils.resolveTemplate(pathPattern, lang, lodName);
+            Path lodPath = Utils.resolveTemplate(dir, pathPattern, lang, lodName);
 
             LodResources resources = lodToResource.computeIfAbsent(lodPath, k -> new LodResources(lodName));
             for (Path path : entry.getValue()) {
@@ -245,7 +246,7 @@ public class DirectoryResourceCollector {
 
     private void writeLog(Map<Path, String> logsByLod) throws IOException {
         LocalDate now = LocalDate.now();
-        Path logPath = dir.resolve("logs").resolve(now + ".log");
+        Path logPath = dir.resolve(this.logPath).resolve(now + ".log");
 
         StringBuilder logRecord = new StringBuilder().append(now).append(":\n");
         logsByLod.forEach((lod, log) -> {

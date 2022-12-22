@@ -93,6 +93,7 @@ public class Pack {
         String pathPattern = properties.getProperty("outputPattern");
 
         DirectoryResourceCollector collector = new DirectoryResourceCollector(self, pathPattern);
+        collector.logPath = properties.getProperty("logsPath", "logs");
         collector.dry = Boolean.parseBoolean(properties.getProperty("dryRun", "false"));
         collector.logDetailedDiff = Boolean.parseBoolean(properties.getProperty("logDetailedDiff", "false"));
         boolean checkTimeStamps = Boolean.parseBoolean(properties.getProperty("checkTimestamps", "false"));
@@ -197,7 +198,7 @@ public class Pack {
                 throw new IOException("Config is broken: no validationFileLocation defined");
             }
             for (String file : validationFileLocation.split("\\|")) {
-                if (Files.exists(Path.of(file))) {
+                if (Files.exists(self.resolve(file))) {
                     System.out.println("Config with suffix " + configName + " is suitable and will be used");
                     return properties;
                 }
@@ -229,7 +230,7 @@ public class Pack {
 
         for (String lang : langs) {
             for (String lod : lods) {
-                Path path = Utils.resolveTemplate(pathPattern, lang, lod);
+                Path path = Utils.resolveTemplate(self, pathPattern, lang, lod);
                 if (!Files.exists(path)) {
                     continue;
                 }

@@ -20,6 +20,7 @@ import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.Parent;
 import javafx.scene.control.*;
+import javafx.scene.control.skin.ListViewSkin;
 import javafx.scene.control.skin.TitledPaneSkin;
 import javafx.scene.input.Clipboard;
 import javafx.scene.input.ClipboardContent;
@@ -179,6 +180,8 @@ public class UiPresentation {
     private ListView<Entry> getListView(Tab tab, StackPane parent, List<Entry> entries) {
         String oldName = tab.getText();
         ListView<Entry> listView = new ListView<>();
+        listView.setMinWidth(200);
+        listView.setPrefWidth(200);
         listView.getItems().addAll(entries);
 
         listView.setEditable(true);
@@ -881,6 +884,12 @@ public class UiPresentation {
             }
 
             ListView<Context.State> listView = new ListView<>(FXCollections.observableList(data));
+            listView.setSkin(new ListViewSkin<>(listView) {
+                @Override
+                protected double computePrefHeight(double width, double topInset, double rightInset, double bottomInset, double leftInset) {
+                    return 2000;
+                }
+            });
             VBox.setVgrow(listView, Priority.ALWAYS);
             listView.setCellFactory(p -> new ListCell<>() {
                 @Override

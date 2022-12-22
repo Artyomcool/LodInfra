@@ -59,6 +59,14 @@ public class PreviewNode extends StackPane {
                     });
                 }
             });
+        } else if (fileName.endsWith(".p32")) {
+            previousLoad = CompletableFuture.runAsync(() -> {
+                Image image = loadP32(file);
+                Platform.runLater(() -> {
+                    getChildren().setAll(imageView);
+                    imageView.setImage(image);
+                });
+            });
         } else {
             imageView.setImage(null);
             getChildren().setAll();
@@ -208,6 +216,36 @@ public class PreviewNode extends StackPane {
         }
 
         return image;
+    }
+
+    private Image loadP32(Path file) {
+        try (FileChannel channel = FileChannel.open(file)) {
+            MappedByteBuffer buffer = channel.map(FileChannel.MapMode.READ_ONLY, 0, channel.size());
+            buffer.order(ByteOrder.LITTLE_ENDIAN);
+
+            int type = buffer.getInt();
+            int version = buffer.getInt();
+            int headerSize = buffer.getInt();
+            int fileSize = buffer.getInt();
+            int imageOffset = buffer.getInt();
+            int imageSize = buffer.getInt();
+
+            int width = buffer.getInt();
+            int height = buffer.getInt();
+
+            WritableImage image = new WritableImage(width, height);
+            buffer.position(imageOffset);
+            for (int j = height - 1; j >= 0; j--) {
+                for (int i = 0; i < width; i++) {
+                    image.getPixelWriter().setArgb(i, j, buffer.getInt());
+                }
+            }
+
+            return image;
+        } catch (IOException e) {
+            e.printStackTrace();
+            return null;
+        }
     }
 
     private void animate(Path file, List<Image> loaded) {
