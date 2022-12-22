@@ -14,7 +14,6 @@ import javafx.beans.value.ObservableValue;
 import javafx.collections.FXCollections;
 import javafx.collections.ListChangeListener;
 import javafx.collections.ObservableList;
-import javafx.event.EventHandler;
 import javafx.geometry.Insets;
 import javafx.geometry.Orientation;
 import javafx.geometry.Pos;
@@ -25,10 +24,7 @@ import javafx.scene.control.skin.TitledPaneSkin;
 import javafx.scene.input.Clipboard;
 import javafx.scene.input.ClipboardContent;
 import javafx.scene.input.KeyCode;
-import javafx.scene.input.MouseEvent;
 import javafx.scene.layout.*;
-import javafx.scene.paint.Color;
-import javafx.scene.paint.Paint;
 import javafx.scene.text.Font;
 import javafx.stage.Stage;
 import javafx.util.StringConverter;
@@ -467,6 +463,18 @@ public class UiPresentation {
             }
         });
         context.addProperty(property);
+
+        combo.setConverter(new StringConverter<>() {
+            @Override
+            public String toString(Value object) {
+                return object == null ? null : object.value() + ". " + object;
+            }
+
+            @Override
+            public Value fromString(String string) {
+                return null;
+            }
+        });
 
         if (combo.getItems().size() > 8) {
             SearchableComboBoxSkin<Value> value = new SearchableComboBoxSkin<>(combo);
