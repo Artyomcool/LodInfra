@@ -21,6 +21,7 @@ public class DirectoryResourceCollector {
     public final String pathPattern;
 
     public String logPath = "logs";
+    public String resPath = ".";
     public boolean dry = false;
     public boolean logDetailedDiff = false;
     public Map<String, Instant> previouslyModifiedAt = null;
@@ -39,7 +40,7 @@ public class DirectoryResourceCollector {
         Map<String, List<Path>> xlsFilesByLodName = new HashMap<>();
         Map<String, List<Path>> resourcesByLangLodName = new HashMap<>();
 
-        List<Path> files = Files.list(dir).collect(Collectors.toList());
+        List<Path> files = Files.list(dir.resolve(resPath)).collect(Collectors.toList());
         for (Path path : files) {
             String name = path.getFileName().toString();
             if (Files.isDirectory(path)) {

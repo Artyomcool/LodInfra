@@ -94,6 +94,7 @@ public class Pack {
 
         DirectoryResourceCollector collector = new DirectoryResourceCollector(self, pathPattern);
         collector.logPath = properties.getProperty("logsPath", "logs");
+        collector.resPath = properties.getProperty("resPath", ".");
         collector.dry = Boolean.parseBoolean(properties.getProperty("dryRun", "false"));
         collector.logDetailedDiff = Boolean.parseBoolean(properties.getProperty("logDetailedDiff", "false"));
         boolean checkTimeStamps = Boolean.parseBoolean(properties.getProperty("checkTimestamps", "false"));
