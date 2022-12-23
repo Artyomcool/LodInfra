@@ -11,10 +11,7 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.Scene;
-import javafx.scene.control.Label;
-import javafx.scene.control.TreeItem;
-import javafx.scene.control.TreeTableColumn;
-import javafx.scene.control.TreeTableRow;
+import javafx.scene.control.*;
 import javafx.scene.layout.*;
 import javafx.stage.Stage;
 
@@ -100,8 +97,9 @@ public class DiffUi extends Application {
             previewRight = preview();
             previewRight.setAlignment(Pos.CENTER);
             VBox previews = new VBox(withLabel(previewLeft, "Preview A"), withLabel(previewRight, "Perview B"));
-            previews.setMinWidth(300);
-            HBox box = new HBox(lastFiles, previews);
+            ScrollPane pane = new ScrollPane(previews);
+            pane.setMinWidth(300);
+            HBox box = new HBox(lastFiles, pane);
             HBox.setHgrow(lastFiles, Priority.ALWAYS);
             root.getChildren().add(box);
 

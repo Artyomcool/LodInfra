@@ -6,6 +6,7 @@ import javafx.animation.KeyValue;
 import javafx.animation.Timeline;
 import javafx.application.Platform;
 import javafx.beans.property.SimpleIntegerProperty;
+import javafx.scene.control.Label;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.image.WritableImage;
@@ -16,12 +17,18 @@ import java.io.IOException;
 import java.nio.ByteOrder;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
 public class PreviewNode extends StackPane {
+
+    private final Executor executor = Executors.newSingleThreadExecutor();  // TODO
+
     Timeline timeline = new Timeline();
 
     private final ImageView imageView = new ImageView();
@@ -40,40 +47,46 @@ public class PreviewNode extends StackPane {
 
         timeline.stop();
         timeline.getKeyFrames().clear();
+        imageView.setImage(null);
+        getChildren().setAll(new Label("Loading..."));
 
         if (fileName.endsWith(".png") || fileName.endsWith(".bmp")) {
-            previousLoad = CompletableFuture.runAsync(() -> {
-                Image image = new Image(file.toAbsolutePath().toUri().toString());
-                Platform.runLater(() -> {
-                    getChildren().setAll(imageView);
-                    imageView.setImage(image);
-                });
-            });
+            previousLoad = CompletableFuture.runAsync(() -> new Image(file.toAbsolutePath().toUri().toString()), executor);
         } else if (fileName.endsWith(".def")) {
-            previousLoad = CompletableFuture.runAsync(() -> {
-                List<Image> loaded = loadDef(file);
-                if (!loaded.isEmpty()) {
-                    Platform.runLater(() -> {
-                        getChildren().setAll(imageView);
-                        animate(file, loaded);
-                    });
-                }
-            });
+            previousLoad = CompletableFuture.runAsync(() -> apply(loadDef(file)), executor);
         } else if (fileName.endsWith(".p32")) {
-            previousLoad = CompletableFuture.runAsync(() -> {
-                Image image = loadP32(file);
-                Platform.runLater(() -> {
-                    getChildren().setAll(imageView);
-                    imageView.setImage(image);
-                });
-            });
+            previousLoad = CompletableFuture.runAsync(() -> apply(loadP32(file)), executor);
+        } else if (fileName.endsWith(".d32")) {
+            previousLoad = CompletableFuture.runAsync(() -> apply(loadD32(file)), executor);
         } else {
-            imageView.setImage(null);
-            getChildren().setAll();
+            apply(Collections.emptyList());
         }
     }
 
+    private void apply(Image image) {
+        apply(image == null ? Collections.emptyList() : Collections.singletonList(image));
+    }
+
+    private void apply(List<Image> images) {
+        Platform.runLater(() -> {
+            if (images.isEmpty()) {
+                getChildren().clear();
+                return;
+            }
+
+            getChildren().setAll(imageView);
+            imageView.setImage(images.get(0));
+
+            if (images.size() == 1) {
+                return;
+            }
+            animate(file, images);
+        });
+    }
+
+
     private List<Image> loadDef(Path file) {
+        Map<String, Image> deduplication = new HashMap<>();
         try (FileChannel channel = FileChannel.open(file)) {
             List<Image> result = new ArrayList<>();
 
@@ -102,7 +115,9 @@ public class PreviewNode extends StackPane {
             String[] names;
             int[] offsets;
 
+            int position = buffer.position();
             for (int i = 0; i < groupCount; i++) {
+                buffer.position(position);
                 int groupType = buffer.getInt();
                 int framesCount = buffer.getInt();
                 buffer.getInt();
@@ -123,7 +138,8 @@ public class PreviewNode extends StackPane {
                     offsets[j] = buffer.getInt();
                 }
 
-                Map<String, Image> deduplication = new HashMap<>();
+                position = buffer.position();
+
                 for (int p = 0; p < framesCount; p++) {
                     String n = names[p];
                     Image image = deduplication.get(n);
@@ -136,9 +152,14 @@ public class PreviewNode extends StackPane {
             }
 
             return result;
+        } catch (NoSuchFileException e) {
+            return Collections.emptyList();
         } catch (IOException e) {
             e.printStackTrace();
             return Collections.emptyList();
+        } catch (RuntimeException|Error e) {
+            e.printStackTrace();
+            throw e;
         }
     }
 
@@ -160,11 +181,6 @@ public class PreviewNode extends StackPane {
         int yy = y;
 
         WritableImage image = new WritableImage(fullWidth, fullHeight);
-        for (int i = 0; i < width; i++) {
-            for (int j = 0; j < height; j++) {
-                image.getPixelWriter().setArgb(i, j, palette[0]);
-            }
-        }
 
         switch (compression) {
             case 1 -> {
@@ -218,6 +234,78 @@ public class PreviewNode extends StackPane {
         return image;
     }
 
+    private List<Image> loadD32(Path file) {
+        try (FileChannel channel = FileChannel.open(file)) {
+            List<Image> result = new ArrayList<>();
+
+            MappedByteBuffer buffer = channel.map(FileChannel.MapMode.READ_ONLY, 0, channel.size());
+            buffer.order(ByteOrder.LITTLE_ENDIAN);
+
+            int type = buffer.getInt();
+            int version = buffer.getInt();
+            int headerSize = buffer.getInt();
+            int fullWidth = buffer.getInt();
+            int fullHeight = buffer.getInt();
+            int activeGroupsCount = buffer.getInt();
+            int additionalHeaderSize = buffer.getInt();
+            int allGroupsCount = buffer.getInt();
+
+            int position = buffer.position();
+            for (int i = 0; i < activeGroupsCount; i++) {
+                buffer.position(position);
+                int groupHeaderSize = buffer.getInt();
+                int groupIndex = buffer.getInt();
+                int framesCount = buffer.getInt();
+
+                int additionalGroupHeaderSize = buffer.getInt();
+
+                buffer.position(buffer.position() + 13 * framesCount);
+
+                position = buffer.position();
+                for (int j = 0; j < framesCount; j++) {
+                    int offset = buffer.getInt(position + j * 4);
+
+                    buffer.position(offset);
+
+                    int frameHeaderSize = buffer.getInt();
+                    int imageSize = buffer.getInt();
+
+                    int width = buffer.getInt();
+                    int height = buffer.getInt();
+
+                    int nonZeroColorWidth = buffer.getInt();
+                    int nonZeroColorHeight = buffer.getInt();
+                    int nonZeroColorLeft = buffer.getInt();
+                    int nonZeroColorTop = buffer.getInt();
+
+                    int frameInfoSize = buffer.getInt();
+                    int frameDrawType = buffer.getInt();
+
+                    WritableImage image = new WritableImage(width, height);
+
+                    for (int y = nonZeroColorHeight + nonZeroColorTop - 1; y >= nonZeroColorTop; y--) {
+                        for (int x = nonZeroColorLeft; x < nonZeroColorLeft + nonZeroColorWidth; x++) {
+                            image.getPixelWriter().setArgb(x, y, buffer.getInt());
+                        }
+                    }
+
+                    result.add(image);
+                }
+                position += framesCount * 4;
+            }
+
+            return result;
+        } catch (NoSuchFileException e) {
+            return Collections.emptyList();
+        } catch (IOException e) {
+            e.printStackTrace();
+            return Collections.emptyList();
+        } catch (RuntimeException|Error e) {
+            e.printStackTrace();
+            throw e;
+        }
+    }
+
     private Image loadP32(Path file) {
         try (FileChannel channel = FileChannel.open(file)) {
             MappedByteBuffer buffer = channel.map(FileChannel.MapMode.READ_ONLY, 0, channel.size());
@@ -242,9 +330,14 @@ public class PreviewNode extends StackPane {
             }
 
             return image;
-        } catch (IOException e) {
+        } catch (NoSuchFileException e) {
+            return null;
+        }  catch (IOException e) {
             e.printStackTrace();
             return null;
+        } catch (RuntimeException|Error e) {
+            e.printStackTrace();
+            throw e;
         }
     }
 
