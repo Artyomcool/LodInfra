@@ -125,7 +125,6 @@ public class DiffUi extends Application {
         JFXTreeTableView<Item> list = new JFXTreeTableView<>();
 
         TreeTableColumn<Item, String> nameA = new TreeTableColumn<>("Name A");
-        TreeTableColumn<Item, String> nameB = new TreeTableColumn<>("Name B");
         TreeTableColumn<Item, String> timeA = new TreeTableColumn<>("Time A");
         TreeTableColumn<Item, String> timeB = new TreeTableColumn<>("Time B");
         TreeTableColumn<Item, Long> sizeA = new TreeTableColumn<>("Size A");
@@ -133,7 +132,6 @@ public class DiffUi extends Application {
 
         list.getColumns().addAll(
                 nameA,
-                nameB,
                 timeA,
                 timeB,
                 sizeA,
@@ -146,7 +144,6 @@ public class DiffUi extends Application {
         Set<Item> reverted = new HashSet<>();
 
         nameA.setCellValueFactory(param -> new SimpleStringProperty(param.getValue().getValue().left.name + "     "));
-        nameB.setCellValueFactory(param -> new SimpleStringProperty(param.getValue().getValue().right.name + "     "));
 
         timeA.setCellValueFactory(param -> new SimpleStringProperty(param.getValue().getValue().left.lastModifiedText()));
         timeB.setCellValueFactory(param -> new SimpleStringProperty(param.getValue().getValue().right.lastModifiedText()));
@@ -159,8 +156,8 @@ public class DiffUi extends Application {
             @Override
             protected void updateItem(Item item, boolean empty) {
                 super.updateItem(item, empty);
-                getStyleClass().removeAll("left-newer", "right-newer", "checked");
-                if (!empty) {
+                //getStyleClass().removeAll("left-newer", "right-newer", "checked");
+                /*if (!empty) {
                     if (!item.left.isDirectory && !item.right.isDirectory) {
                         int compare = compare(item.left.lastModified, item.right.lastModified);
                         if (compare < 0) {
@@ -194,7 +191,7 @@ public class DiffUi extends Application {
                         });
                     } else if (item.left.isDirectory && item.right.isDirectory) {
                     }
-                }
+                }*/
             }
         });
         list.getSelectionModel().selectedIndexProperty().addListener(new ChangeListener<Number>() {

@@ -20,14 +20,15 @@ import java.nio.channels.FileChannel;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Executor;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
+import java.util.concurrent.*;
 
 public class PreviewNode extends StackPane {
 
-    private final Executor executor = Executors.newSingleThreadExecutor();  // TODO
+    private final Executor executor = Executors.newSingleThreadExecutor(r -> {
+        Thread thread = new Thread(r, "preview node thread " + PreviewNode.this.hashCode());
+        thread.setDaemon(true);
+        return thread;
+    });  // TODO
 
     Timeline timeline = new Timeline();
 
@@ -51,7 +52,7 @@ public class PreviewNode extends StackPane {
         getChildren().setAll(new Label("Loading..."));
 
         if (fileName.endsWith(".png") || fileName.endsWith(".bmp")) {
-            previousLoad = CompletableFuture.runAsync(() -> new Image(file.toAbsolutePath().toUri().toString()), executor);
+            previousLoad = CompletableFuture.runAsync(() -> apply(new Image(file.toAbsolutePath().toUri().toString())), executor);
         } else if (fileName.endsWith(".def")) {
             previousLoad = CompletableFuture.runAsync(() -> apply(loadDef(file)), executor);
         } else if (fileName.endsWith(".p32")) {
