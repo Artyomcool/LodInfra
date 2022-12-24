@@ -187,6 +187,9 @@ public class DiffUi extends Application {
         VBox listParent = new VBox(list);
         VBox.setVgrow(list, Priority.ALWAYS);
 
+        Font regular = Font.font(12);
+        Font bold = Font.font(null, FontWeight.BOLD, 12);
+
         Map<Item, ItemAction> actions = new HashMap<>();
 
         name.setCellValueFactory(param -> new SimpleStringProperty(param.getValue().getValue().local.name + "          "));
@@ -238,8 +241,13 @@ public class DiffUi extends Application {
                                 );
                                 if (action == item.status.negative()) {
                                     setTextFill(Color.RED);
+                                    setFont(bold);
+                                } else if (action == item.status.positive()) {
+                                    setTextFill(Color.DARKBLUE);
+                                    setFont(bold);
                                 } else {
                                     setTextFill(Color.BLACK);
+                                    setFont(regular);
                                 }
                             } else {
                                 super.setGraphic(REMOTE_NEWER);
@@ -258,8 +266,6 @@ public class DiffUi extends Application {
 
         timeA.setCellValueFactory(param -> new SimpleStringProperty(param.getValue().getValue().local.lastModifiedText()));
         timeA.setCellFactory(new Callback<>() {
-            final Font regular = Font.font(12);
-            final Font bold = Font.font(null, FontWeight.BOLD, 12);
 
             @Override
             public TreeTableCell<Item, String> call(TreeTableColumn<Item, String> param) {
