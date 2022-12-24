@@ -306,7 +306,9 @@ public class Pack {
         String leftDir = arguments.getProperty("left_dir");
         String rightDir = arguments.getProperty("right_dir");
 
-        DiffUi gui = new DiffUi(Path.of(leftDir), Path.of(rightDir));
+        String cfgDir = arguments.getProperty("commonCfgDir");
+
+        DiffUi gui = new DiffUi(Path.of(leftDir), Path.of(rightDir), Path.of(cfgDir, "diff.cfg"));
 
         run(gui);
     }

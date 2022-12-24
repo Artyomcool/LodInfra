@@ -3,11 +3,8 @@ package com.github.artyomcool.lodinfra.ui;
 import com.jfoenix.controls.JFXTreeTableView;
 import com.jfoenix.controls.datamodels.treetable.RecursiveTreeObject;
 import javafx.application.Application;
-import javafx.beans.property.Property;
 import javafx.beans.property.SimpleObjectProperty;
 import javafx.beans.property.SimpleStringProperty;
-import javafx.beans.value.ChangeListener;
-import javafx.beans.value.ObservableValue;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Group;
@@ -16,18 +13,18 @@ import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
-import javafx.scene.paint.Paint;
 import javafx.scene.shape.SVGPath;
 import javafx.scene.shape.StrokeLineCap;
 import javafx.scene.shape.StrokeLineJoin;
 import javafx.scene.shape.StrokeType;
 import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
-import javafx.scene.text.TextAlignment;
 import javafx.stage.Stage;
 import javafx.util.Callback;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
@@ -36,6 +33,7 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.prefs.Preferences;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 public class DiffUi extends Application {
@@ -46,14 +44,22 @@ public class DiffUi extends Application {
 
     private final Path localPath;
     private final Path remotePath;
+    private final Properties cfg;
 
     private Stage primaryStage;
     private PreviewNode previewLocal;
     private PreviewNode previewRemote;
 
-    public DiffUi(Path localPath, Path remotePath) {
-        this.localPath = localPath;
-        this.remotePath = remotePath;
+    public DiffUi(Path localPath, Path remotePath, Path cfg) {
+        this.localPath = localPath.toAbsolutePath();
+        this.remotePath = remotePath.toAbsolutePath();
+
+        try (BufferedReader stream = Files.newBufferedReader(cfg)) {
+            this.cfg = new Properties();
+            this.cfg.load(stream);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
     record FileInfo(Path path, String name, FileTime lastModified, Long size, boolean isDirectory) {
@@ -169,7 +175,7 @@ public class DiffUi extends Application {
         TreeTableColumn<Item, String> timeA = new TreeTableColumn<>("Local time");
         TreeTableColumn<Item, String> timeB = new TreeTableColumn<>("Remote time");
         TreeTableColumn<Item, Long> sizeA = new TreeTableColumn<>("Local size");
-        TreeTableColumn<Item, Long> sizeB = new TreeTableColumn<>("Remote");
+        TreeTableColumn<Item, Long> sizeB = new TreeTableColumn<>("Remote size");
 
         list.getColumns().addAll(
                 name,
@@ -183,7 +189,7 @@ public class DiffUi extends Application {
 
         Map<Item, ItemAction> actions = new HashMap<>();
 
-        name.setCellValueFactory(param -> new SimpleStringProperty(param.getValue().getValue().local.name + "     "));
+        name.setCellValueFactory(param -> new SimpleStringProperty(param.getValue().getValue().local.name + "          "));
         name.setCellFactory(new Callback<>() {
             @Override
             public TreeTableCell<Item, String> call(TreeTableColumn<Item, String> param) {
@@ -208,6 +214,9 @@ public class DiffUi extends Application {
                             case REMOTE_TO_LOCAL -> remote;
                             case LOCAL_TO_REMOTE -> local;
                         };
+                    }
+                    {
+                        setTextOverrun(OverrunStyle.CLIP);
                     }
 
                     @Override
@@ -345,6 +354,10 @@ public class DiffUi extends Application {
             }
         });
 
+        String ignoreCommon = cfg.getProperty("ignore.common", "$^");
+        Pattern ignoreLocal = Pattern.compile("(" + cfg.getProperty("ignore.local", "$^") + ")|(" + ignoreCommon + ")");
+        Pattern ignoreRemote = Pattern.compile("(" + cfg.getProperty("ignore.remote", "$^") + ")|(" + ignoreCommon + ")");
+
         Set<Path> allPaths = new TreeSet<>();
         try (Stream<Path> w1 = Files.walk(localPath); Stream<Path> w2 = Files.walk(remotePath)) {
             w1.forEach(l -> allPaths.add(localPath.relativize(l)));
@@ -366,6 +379,13 @@ public class DiffUi extends Application {
 
             Path local = localPath.resolve(path);
             Path remote = remotePath.resolve(path);
+
+            if (ignoreLocal.matcher(local.toString()).matches()) {
+                continue;
+            }
+            if (ignoreRemote.matcher(remote.toString()).matches()) {
+                continue;
+            }
 
             boolean localExists = Files.exists(local);
             boolean remoteExists = Files.exists(remote);
