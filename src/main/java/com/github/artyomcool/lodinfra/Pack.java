@@ -172,6 +172,10 @@ public class Pack {
     private static Properties getArguments(Path self, List<String> args) throws IOException {
         Properties properties = loadProperties(self);
         applyArgs(args, properties);
+        System.out.println("Args: ");
+        for (String propertyName : properties.stringPropertyNames()) {
+            System.out.println(propertyName + "=" + properties.getProperty(propertyName));
+        }
         return properties;
     }
 

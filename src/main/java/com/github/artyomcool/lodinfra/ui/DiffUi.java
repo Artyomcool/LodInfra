@@ -57,6 +57,13 @@ public class DiffUi extends Application {
         try (BufferedReader stream = Files.newBufferedReader(cfg)) {
             this.cfg = new Properties();
             this.cfg.load(stream);
+
+            System.out.println();
+            System.out.println("DiffUi cfg " + cfg);
+            for (String propertyName : this.cfg.stringPropertyNames()) {
+                System.out.println(propertyName + "=" + this.cfg.getProperty(propertyName));
+            }
+
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
@@ -330,7 +337,6 @@ public class DiffUi extends Application {
         sizeB.setCellValueFactory(param -> new SimpleObjectProperty<>(param.getValue().getValue().remote.size));
 
         list.setRowFactory(r -> new TreeTableRow<>() {
-
             @Override
             protected void updateItem(Item item, boolean empty) {
                 super.updateItem(item, empty);
