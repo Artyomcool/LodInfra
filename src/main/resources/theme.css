@@ -100,3 +100,8 @@
 .tree-table-row-cell:selected {
     -fx-background-color: #F0C080;
 }
+
+.segmented-button {
+    -fx-margin: 2px;
+    -fx-base: rgb(240, 250, 255);
+}

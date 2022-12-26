@@ -96,6 +96,20 @@ public class Gui extends Application {
                     file -> loadDat(root, file)
             ));
 
+            fileMenu.getItems().add(createMenuItem(
+                    "Find",
+                    "Ctrl+F",
+                    () -> {
+                        for (Map.Entry<String, List<DataEntry>> entry : data.entrySet()) {
+                            for (DataEntry data : entry.getValue()) {
+                                for (Map.Entry<String, Object> element : data.entrySet()) {
+                                    //..element.getKey().contains()
+                                }
+                            }
+                        }
+                    }
+            ));
+
             Scene scene = new Scene(root);
             scene.getStylesheets().add(getClass().getResource("/theme.css").toExternalForm());
 

@@ -129,11 +129,15 @@ public class PreviewNode extends StackPane {
                 names = new String[framesCount];
                 for (int j = 0; j < framesCount; j++) {
                     buffer.get(name);
-                    int q = 0;
-                    while (name[q] != 0) {
-                        q++;
+                    try {
+                        int q = 0;
+                        while (name[q] != 0) {
+                            q++;
+                        }
+                        names[j] = new String(name, 0, q);
+                    } catch (IndexOutOfBoundsException e) {
+                        throw new RuntimeException("Strange def name" + new String(name), e);
                     }
-                    names[j] = new String(name, 0, q);
                 }
 
                 offsets = new int[framesCount];
