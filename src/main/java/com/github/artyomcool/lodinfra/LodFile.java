@@ -12,21 +12,21 @@ public class LodFile {
 
     public static final int MAGIC = 0x00444f4c;   // LOD\0 in little endian
 
-    static class SubFileMeta {
-        byte[] name = new byte[16];
-        int globalOffsetInFile;
-        int uncompressedSize;
-        int fileType;
-        int compressedSize;
+    public static class SubFileMeta {
+        public byte[] name = new byte[16];
+        public int globalOffsetInFile;
+        public int uncompressedSize;
+        public int fileType;
+        public int compressedSize;
     }
 
-    byte[] originalData;
+    public ByteBuffer originalData;
 
-    int magic;
-    int fileUseFlag;
-    int subFilesCount;
-    byte[] junk = new byte[80];
-    List<SubFileMeta> subFiles;
+    public int magic;
+    public int fileUseFlag;
+    public int subFilesCount;
+    public byte[] junk = new byte[80];
+    public List<SubFileMeta> subFiles;
 
     public static LodFile createEmpty() {
         LodFile file = new LodFile();
@@ -38,18 +38,17 @@ public class LodFile {
     }
 
     public static LodFile load(Path file) throws IOException {
-        return parse(Files.readAllBytes(file));
+        return parse(ByteBuffer.wrap(Files.readAllBytes(file)).order(ByteOrder.LITTLE_ENDIAN));
     }
 
     public static LodFile loadOrCreate(Path lodPath) throws IOException {
         return Files.exists(lodPath) ? load(lodPath) : createEmpty();
     }
 
-    public static LodFile parse(byte[] data) throws IOException {
+    public static LodFile parse(ByteBuffer byteBuffer) throws IOException {
         LodFile result = new LodFile();
-        result.originalData = data;
+        result.originalData = byteBuffer;
 
-        ByteBuffer byteBuffer = ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN);
         result.magic = byteBuffer.getInt();   // signature written in big endian
         if (result.magic != MAGIC) {
             throw new IOException("File is broken: magic is " + Integer.reverseBytes(result.magic));

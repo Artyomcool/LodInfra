@@ -7,6 +7,7 @@ import javafx.application.Platform;
 import javafx.stage.Stage;
 
 import java.io.*;
+import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
@@ -252,24 +253,20 @@ public class Pack {
 
                     Files.createDirectories(toStore.getParent());
                     if (subFile.compressedSize == 0) {
-                        data = Arrays.copyOfRange(
-                                lodFile.originalData,
-                                subFile.globalOffsetInFile,
-                                subFile.globalOffsetInFile + subFile.uncompressedSize
-                        );
+                        ByteBuffer buffer =
+                                lodFile.originalData.slice(subFile.globalOffsetInFile, subFile.uncompressedSize);
+                        data = new byte[buffer.remaining()];
+                        buffer.get(data);
                     } else {
                         byte[] uncompressed = new byte[subFile.uncompressedSize];
                         Inflater inflater = new Inflater();
                         inflater.setInput(
-                                lodFile.originalData,
-                                subFile.globalOffsetInFile,
-                                subFile.compressedSize
+                                lodFile.originalData.slice(subFile.globalOffsetInFile, subFile.compressedSize)
                         );
                         inflater.inflate(uncompressed);
                         inflater.end();
 
                         data = uncompressed;
-
                     }
 
                     if (name.toLowerCase().endsWith(".pcx")) {

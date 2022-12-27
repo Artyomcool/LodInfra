@@ -1,10 +1,13 @@
 package com.github.artyomcool.lodinfra.ui;
 
+import com.github.artyomcool.lodinfra.LodFile;
 import com.jfoenix.controls.JFXTreeTableView;
 import com.jfoenix.controls.datamodels.treetable.RecursiveTreeObject;
 import javafx.application.Application;
 import javafx.beans.property.SimpleObjectProperty;
 import javafx.beans.property.SimpleStringProperty;
+import javafx.beans.value.ChangeListener;
+import javafx.beans.value.ObservableValue;
 import javafx.collections.ObservableList;
 import javafx.event.Event;
 import javafx.geometry.Insets;
@@ -51,7 +54,7 @@ public class DiffUi extends Application {
     private final Path remotePath;
     private final Properties cfg;
 
-    private final Map<Item, ItemAction> actions = new HashMap<>();
+    private Map<Item, ItemAction> actions;
 
     private Stage primaryStage;
     private PreviewNode previewLocal;
@@ -111,10 +114,16 @@ public class DiffUi extends Application {
         final FileInfo local;
         final FileInfo remote;
         final ItemStatus status;
+        final boolean isSynthetic;
 
         Item(FileInfo local, FileInfo remote) {
+            this(local, remote, false);
+        }
+
+        Item(FileInfo local, FileInfo remote, boolean isSynthetic) {
             this.local = local;
             this.remote = remote;
+            this.isSynthetic = isSynthetic;
 
             status = status();
         }
@@ -300,22 +309,45 @@ public class DiffUi extends Application {
                             if (treeItem != null) {
                                 Item item = treeItem.getValue();
                                 ItemAction action = actions.getOrDefault(item, ItemAction.NOTHING);
+                                if (observe.isSelected()) {
+                                    if (item.status == ItemStatus.CONFLICT) {
+                                        setTextFill(Color.RED);
+                                        setFont(bold);
+                                    } else if (item.status == ItemStatus.REMOTE_NEWER) {
+                                        setTextFill(Color.DARKBLUE);
+                                        setFont(bold);
+                                    } else if (item.status == ItemStatus.LOCAL_NEWER) {
+                                        setTextFill(Color.DARKGOLDENROD);
+                                        setFont(bold);
+                                    } else {
+                                        setTextFill(Color.BLACK);
+                                        setFont(regular);
+                                    }
 
-                                if (action == item.status.negative()) {
-                                    setTextFill(Color.RED);
-                                    setFont(bold);
-                                } else if (action == item.status.positive()) {
-                                    setTextFill(Color.DARKBLUE);
-                                    setFont(bold);
+                                    super.setGraphic(null);
                                 } else {
-                                    setTextFill(Color.BLACK);
-                                    setFont(regular);
+
+                                    if (action == item.status.negative()) {
+                                        setTextFill(Color.RED);
+                                        setFont(bold);
+                                    } else if (action == item.status.positive()) {
+                                        setTextFill(Color.DARKBLUE);
+                                        setFont(bold);
+                                    } else {
+                                        setTextFill(Color.BLACK);
+                                        setFont(regular);
+                                    }
+
+                                    if (!item.isSynthetic) {
+                                        boolean old = ignoreUpdate;
+                                        ignoreUpdate = true;
+                                        checkBox.setSelected(action == item.status.positive());
+                                        ignoreUpdate = old;
+                                        super.setGraphic(checkBox);
+                                    } else {
+                                        super.setGraphic(null);
+                                    }
                                 }
-                                boolean old = ignoreUpdate;
-                                ignoreUpdate = true;
-                                checkBox.setSelected(action == item.status.positive());
-                                ignoreUpdate = old;
-                                super.setGraphic(checkBox);
                             } else {
                                 super.setGraphic(null);
                             }
@@ -413,7 +445,71 @@ public class DiffUi extends Application {
                     if (!item.local.isDirectory && !item.remote.isDirectory) {
                         setOnMouseClicked(e -> {
                             if (e.getClickCount() == 2) {
+                                TreeItem<Item> treeItem = getTreeItem();
+                                if (treeItem.getChildren().isEmpty() && (item.local.isFile || item.remote.isFile)) {
+                                    if (item.local.name.toLowerCase().endsWith(".lod")) {
+                                        TreeSet<String> allResources = new TreeSet<>();
+                                        Map<String, LodFile.SubFileMeta> localMapping = new HashMap<>();
+                                        Map<String, LodFile.SubFileMeta> remoteMapping = new HashMap<>();
 
+                                        try {
+                                            if (item.local.isFile) {
+                                                LodFile lod = LodFile.load(item.local.path);
+                                                for (LodFile.SubFileMeta subFile : lod.subFiles) {
+                                                    String name = new String(subFile.name).trim().toLowerCase();
+                                                    allResources.add(name);
+                                                    localMapping.put(name, subFile);
+                                                }
+                                            }
+                                            if (item.remote.isFile) {
+                                                LodFile lod = LodFile.load(item.remote.path);
+                                                for (LodFile.SubFileMeta subFile : lod.subFiles) {
+                                                    String name = new String(subFile.name).trim().toLowerCase();
+                                                    allResources.add(name);
+                                                    remoteMapping.put(name, subFile);
+                                                }
+                                            }
+
+                                            List<TreeItem<Item>> items = new ArrayList<>();
+                                            for (String res : allResources) {
+                                                LodFile.SubFileMeta localMeta = localMapping.get(res);
+                                                LodFile.SubFileMeta remoteMeta = remoteMapping.get(res);
+
+                                                String localName = localMeta == null
+                                                        ? new String(remoteMeta.name).trim()
+                                                        : new String(localMeta.name).trim();
+
+                                                String remoteName = remoteMeta == null
+                                                        ? new String(localMeta.name).trim()
+                                                        : new String(remoteMeta.name).trim();
+
+
+                                                FileInfo localFile = new FileInfo(
+                                                        item.local.path.resolveSibling(item.local.path.getFileName() + "?" + localName),
+                                                        localName,
+                                                        null,
+                                                        localMeta == null ? null : (long)localMeta.uncompressedSize,
+                                                        false,
+                                                        localMeta != null
+                                                );
+                                                FileInfo remoteFile = new FileInfo(
+                                                        item.remote.path.resolveSibling(item.remote.path.getFileName() + "?" + remoteName),
+                                                        remoteName,
+                                                        null,
+                                                        remoteMeta == null ? null : (long)remoteMeta.uncompressedSize,
+                                                        false,
+                                                        remoteMeta != null
+                                                );
+
+                                                items.add(new TreeItem<>(new Item(localFile, remoteFile, true)));
+                                            }
+                                            treeItem.getChildren().setAll(items);
+                                            treeItem.setExpanded(true);
+                                        } catch (IOException ex) {
+                                            ex.printStackTrace();
+                                        }
+                                    }
+                                }
                             }
                         });
                     } else if (item.local.isDirectory && item.remote.isDirectory) {
@@ -445,25 +541,47 @@ public class DiffUi extends Application {
         list.setShowRoot(false);
         list.setFixedCellSize(20);
 
-        fetch.selectedProperty().addListener((observable, oldValue, newValue) -> {
-            if (newValue) {
-                TreeItem<Item> value = filterForFetch();
-                executeCheckTreeItem(value, true);
-                list.setRoot(value);
+        fetch.selectedProperty().addListener(new ChangeListener<>() {
+
+            final Map<Item, ItemAction> fetchActions = new HashMap<>();
+
+            @Override
+            public void changed(ObservableValue<? extends Boolean> observable, Boolean oldValue, Boolean newValue) {
+                if (newValue) {
+                    actions = fetchActions;
+                    list.setRoot(DiffUi.this.filterForFetch());
+                    list.refresh();
+                }
             }
         });
-        push.selectedProperty().addListener((observable, oldValue, newValue) -> {
-            if (newValue) {
-                //list.setRoot(filterForPush());
+        push.selectedProperty().addListener(new ChangeListener<>() {
+
+            final Map<Item, ItemAction> pushActions = new HashMap<>();
+
+            @Override
+            public void changed(ObservableValue<? extends Boolean> observable, Boolean oldValue, Boolean newValue) {
+                if (newValue) {
+                    //actions = pushActions;
+                    //list.setRoot(filterForPush());
+                }
             }
         });
-        observe.selectedProperty().addListener((observable, oldValue, newValue) -> {
-            if (newValue) {
-                list.setRoot(filterForObserve());
+        observe.selectedProperty().addListener(new ChangeListener<>() {
+
+            final Map<Item, ItemAction> observeActions = new HashMap<>();
+
+            @Override
+            public void changed(ObservableValue<? extends Boolean> observable, Boolean oldValue, Boolean newValue) {
+                if (newValue) {
+                    actions = observeActions;
+                    list.setRoot(DiffUi.this.filterForObserve());
+                    list.refresh();
+                }
             }
         });
 
         fetch.fire();
+        executeCheckTreeItem(list.getRoot(), true);
 
         return listParent;
     }
@@ -603,29 +721,6 @@ public class DiffUi extends Application {
         return new PreviewNode();
     }
 
-    private TreeItem<Item> fold(TreeItem<Item> root) {
-        if (root.getChildren().size() == 1) {
-            TreeItem<Item> child = root.getChildren().get(0);
-            fold(child);
-            if (child.isLeaf()) {
-                return root;
-            }
-            child.setValue(child.getValue().foldInto(root.getValue()));
-            return child;
-        }
-
-        for (ListIterator<TreeItem<Item>> iterator = root.getChildren().listIterator(); iterator.hasNext(); ) {
-            TreeItem<Item> child = iterator.next();
-            iterator.set(fold(child));
-        }
-        return root;
-    }
-
-    private void expand(TreeItem<Item> rootItem) {
-        rootItem.setExpanded(true);
-        rootItem.getChildren().forEach(this::expand);
-    }
-
     private Pane withLabel(Node pane, String label) {
         Pane result = new VBox(new Label(label), pane);
         result.setPadding(new Insets(4));
@@ -659,88 +754,6 @@ public class DiffUi extends Application {
         NOTHING,
         LOCAL_TO_REMOTE,
         REMOTE_TO_LOCAL
-    }
-
-    private static Node createIcon(ItemStatus status, ItemAction action) {
-        return switch (status) {
-            case SAME -> new Region();
-            case LOCAL_NEWER -> group(
-                    action(action, ItemAction.LOCAL_TO_REMOTE, Color.DARKGOLDENROD),
-                    leftRect(14, Color.DARKGOLDENROD),
-                    rightRect(8, Color.DARKGRAY)
-            );
-            case REMOTE_NEWER -> group(
-                    action(action, ItemAction.REMOTE_TO_LOCAL, Color.MEDIUMSLATEBLUE),
-                    leftRect(8, Color.DARKGRAY),
-                    rightRect(14, Color.MEDIUMSLATEBLUE)
-            );
-            case CONFLICT -> group(
-                    action(action, ItemAction.NOTHING, null),
-                    leftRect(8, Color.DARKRED),
-                    rightRect(8, Color.DARKRED)
-            );
-        };
-    }
-
-    private static Group group(Node action, Node left, Node right) {
-        if (action == null) {
-            return new Group(left, right);
-        }
-        return new Group(left, right, action);
-    }
-
-    private static Node leftRect(int h, Color color) {
-        return rect(0, h, color);
-    }
-
-    private static Node rightRect(int h, Color color) {
-        return rect(9, h, color);
-    }
-
-    private static SVGPath rect(int x, int h, Color color) {
-        SVGPath path = new SVGPath();
-        path.setContent("m " + x + " 15 6 0 0 -" + h + " -6 0 0 " + h + " z");
-        path.setStroke(color);
-        path.setFill(Color.LIGHTGRAY);
-        path.setStrokeWidth(2);
-        path.setStrokeType(StrokeType.INSIDE);
-        return path;
-    }
-
-    private static Node action(ItemAction action, ItemAction positive, Color positiveColor) {
-        if (action == ItemAction.NOTHING) {
-            return null;
-        }
-
-        SVGPath path = new SVGPath();
-        path.setFill(null);
-        path.setStrokeLineJoin(StrokeLineJoin.ROUND);
-        path.setStrokeLineCap(StrokeLineCap.ROUND);
-
-        if (action == positive) {
-            path.setStrokeWidth(2);
-            path.setStroke(positiveColor);
-            path.setContent(
-                    action == ItemAction.REMOTE_TO_LOCAL
-                            ? "m 1 5 2 2 2 -2 m -2 2 0 -5 9 0"
-                            : "m 14 5 -2 2 -2 -2 m 2 2 0 -5 -9 0"
-            );
-        } else {
-            path.setStrokeWidth(0.5);
-            path.setStroke(Color.RED);
-            path.setContent(
-                    action == ItemAction.REMOTE_TO_LOCAL
-                            ? "m 3 6 0 -3 8 0"
-                            : "m 3 6 0 -3 8 0"
-            );
-            path.setContent(
-                    action == ItemAction.REMOTE_TO_LOCAL
-                            ? "M 2 1 1 2 M 5 1 1 5 M 5 3 1 8 M 5 5 1 13 M 5 7 1 15 M 5 9 3 15 M 5 11 5 15"
-                            : "M 11 1 10 2 M 14 1 10 5 M 14 3 10 8 M 14 5 10 13 M 14 7 10 15 M 14 9 12 15 M 14 11 14 15"
-            );
-        }
-
-        return path;
     }
 
     private static Node downloadIcon() {

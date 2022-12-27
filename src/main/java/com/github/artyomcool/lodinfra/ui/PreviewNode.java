@@ -1,5 +1,6 @@
 package com.github.artyomcool.lodinfra.ui;
 
+import com.github.artyomcool.lodinfra.LodFile;
 import javafx.animation.Interpolator;
 import javafx.animation.KeyFrame;
 import javafx.animation.KeyValue;
@@ -14,15 +15,19 @@ import javafx.scene.layout.StackPane;
 import javafx.util.Duration;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.*;
-import java.util.concurrent.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
-import static com.github.artyomcool.lodinfra.ui.D32Utils.loadD32;
+import static com.github.artyomcool.lodinfra.ui.ImgFilesUtils.*;
 
 public class PreviewNode extends StackPane {
 
@@ -85,195 +90,6 @@ public class PreviewNode extends StackPane {
             }
             animate(file, images);
         });
-    }
-
-
-    private List<Image> loadDef(Path file) {
-        Map<String, Image> deduplication = new HashMap<>();
-        try (FileChannel channel = FileChannel.open(file)) {
-            List<Image> result = new ArrayList<>();
-
-            MappedByteBuffer buffer = channel.map(FileChannel.MapMode.READ_ONLY, 0, channel.size());
-            buffer.order(ByteOrder.LITTLE_ENDIAN);
-
-            int type = buffer.getInt();
-            int fullWidth = buffer.getInt();
-            int fullHeight = buffer.getInt();
-
-            int groupCount = buffer.getInt();
-            int[] palette = new int[256];
-            for (int i = 0; i < palette.length; i++) {
-                palette[i] = 0xff000000 | (buffer.get() & 0xff) << 16 | (buffer.get() & 0xff) << 8 | (buffer.get() & 0xff);
-            }
-            /*
-            palette[0] = 0xFF00FFFF;
-            palette[1] = 0xFFFF80FF;
-            palette[4] = 0xFFFF00FF;
-            palette[5] = 0xFFFFFF00;
-            palette[6] = 0xFF8000FF;
-            palette[7] = 0xFF00FF00;
-             */
-
-            byte[] name = new byte[13];
-            String[] names;
-            int[] offsets;
-
-            int position = buffer.position();
-            for (int i = 0; i < groupCount; i++) {
-                buffer.position(position);
-                int groupType = buffer.getInt();
-                int framesCount = buffer.getInt();
-                buffer.getInt();
-                buffer.getInt();
-
-                names = new String[framesCount];
-                for (int j = 0; j < framesCount; j++) {
-                    buffer.get(name);
-                    try {
-                        int q = 0;
-                        while (name[q] != 0) {
-                            q++;
-                        }
-                        names[j] = new String(name, 0, q);
-                    } catch (IndexOutOfBoundsException e) {
-                        throw new RuntimeException("Strange def name" + new String(name), e);
-                    }
-                }
-
-                offsets = new int[framesCount];
-                for (int j = 0; j < framesCount; j++) {
-                    offsets[j] = buffer.getInt();
-                }
-
-                position = buffer.position();
-
-                for (int p = 0; p < framesCount; p++) {
-                    String n = names[p];
-                    Image image = deduplication.get(n);
-                    if (image == null) {
-                        image = decode(buffer, palette, offsets[p]);
-                        deduplication.put(n, image);
-                    }
-                    result.add(image);
-                }
-            }
-
-            return result;
-        } catch (NoSuchFileException e) {
-            return Collections.emptyList();
-        } catch (IOException e) {
-            e.printStackTrace();
-            return Collections.emptyList();
-        } catch (RuntimeException|Error e) {
-            e.printStackTrace();
-            throw e;
-        }
-    }
-
-    private Image decode(MappedByteBuffer buffer, int[] palette, int offset) {
-        buffer.position(offset);
-        int size = buffer.getInt();
-        int compression = buffer.getInt();
-        int fullWidth = buffer.getInt();
-        int fullHeight = buffer.getInt();
-
-        int width = buffer.getInt();
-        int height = buffer.getInt();
-        int x = buffer.getInt();
-        int y = buffer.getInt();
-
-        int start = buffer.position();
-
-        int xx = x;
-        int yy = y;
-
-        WritableImage image = new WritableImage(fullWidth, fullHeight);
-
-        switch (compression) {
-            case 1 -> {
-                int[] offsets = new int[height];
-                for (int i = 0; i < offsets.length; i++) {
-                    offsets[i] = buffer.getInt() + start;
-                }
-                for (int i : offsets) {
-                    buffer.position(i);
-
-                    for (int w = 0; w < width; ) {
-                        int index = (buffer.get() & 0xff);
-                        int count = (buffer.get() & 0xff) + 1;
-                        for (int j = 0; j < count; j++) {
-                            image.getPixelWriter().setArgb(xx, yy, palette[index == 0xff ? (buffer.get() & 0xff) : index]);
-                            xx++;
-                        }
-                        w += count;
-                    }
-                    xx = x;
-                    yy++;
-                }
-            }
-            case 2 -> {
-                int[] offsets = new int[height];
-                for (int i = 0; i < offsets.length; i++) {
-                    offsets[i] = (buffer.getShort() & 0xffff) + start;
-                }
-                buffer.getShort();
-                for (int i : offsets) {
-                    buffer.position(i);
-
-                    for (int w = 0; w < width; ) {
-                        int b = buffer.get() & 0xff;
-                        int index = b >> 5;
-                        int count = (b & 0x1f) + 1;
-                        for (int j = 0; j < count; j++) {
-                            image.getPixelWriter().setArgb(xx, yy, palette[index == 0x7 ? (buffer.get() & 0xff) : index]);
-                            xx++;
-                            if (xx >= x + width) {
-                                yy++;
-                                xx = x;
-                            }
-                        }
-                        w += count;
-                    }
-                }
-            }
-        }
-
-        return image;
-    }
-
-    private Image loadP32(Path file) {
-        try (FileChannel channel = FileChannel.open(file)) {
-            MappedByteBuffer buffer = channel.map(FileChannel.MapMode.READ_ONLY, 0, channel.size());
-            buffer.order(ByteOrder.LITTLE_ENDIAN);
-
-            int type = buffer.getInt();
-            int version = buffer.getInt();
-            int headerSize = buffer.getInt();
-            int fileSize = buffer.getInt();
-            int imageOffset = buffer.getInt();
-            int imageSize = buffer.getInt();
-
-            int width = buffer.getInt();
-            int height = buffer.getInt();
-
-            WritableImage image = new WritableImage(width, height);
-            buffer.position(imageOffset);
-            for (int j = height - 1; j >= 0; j--) {
-                for (int i = 0; i < width; i++) {
-                    image.getPixelWriter().setArgb(i, j, buffer.getInt());
-                }
-            }
-
-            return image;
-        } catch (NoSuchFileException e) {
-            return null;
-        }  catch (IOException e) {
-            e.printStackTrace();
-            return null;
-        } catch (RuntimeException|Error e) {
-            e.printStackTrace();
-            throw e;
-        }
     }
 
     private void animate(Path file, List<Image> loaded) {

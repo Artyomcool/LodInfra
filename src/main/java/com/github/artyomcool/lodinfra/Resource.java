@@ -83,8 +83,7 @@ public class Resource {
                 name,
                 sanitizeName(name),
                 holderPath + ":" + name,
-                ByteBuffer.wrap(
-                        file.originalData,
+                file.originalData.slice(
                         meta.globalOffsetInFile,
                         meta.compressedSize == 0 ? meta.uncompressedSize : meta.compressedSize
                 ),
