@@ -259,9 +259,12 @@ public class DiffUi extends Application {
         HBox rightPanel = new HBox();
         leftPanel.setAlignment(Pos.CENTER_LEFT);
         rightPanel.setAlignment(Pos.CENTER_RIGHT);
-        HBox panelWrapper = new HBox(leftPanel, modes, rightPanel);
-        HBox.setHgrow(leftPanel, Priority.ALWAYS);
-        HBox.setHgrow(rightPanel, Priority.ALWAYS);
+        TilePane panelWrapper = new TilePane();
+        panelWrapper.setPrefColumns(3);
+        panelWrapper.setAlignment(Pos.CENTER);
+        TilePane.setAlignment(leftPanel, Pos.CENTER_LEFT);
+        TilePane.setAlignment(rightPanel, Pos.CENTER_RIGHT);
+        panelWrapper.getChildren().setAll(leftPanel, modes, rightPanel);
 
         StackPane listWrapper = new StackPane();
         VBox listParent = new VBox(panelWrapper, listWrapper);
