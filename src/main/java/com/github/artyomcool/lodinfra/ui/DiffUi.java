@@ -12,30 +12,31 @@ import javafx.collections.ObservableList;
 import javafx.event.Event;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
-import javafx.scene.Group;
 import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.SVGPath;
-import javafx.scene.shape.StrokeLineCap;
-import javafx.scene.shape.StrokeLineJoin;
-import javafx.scene.shape.StrokeType;
 import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
 import javafx.stage.Stage;
 import javafx.util.Callback;
 import org.controlsfx.control.SegmentedButton;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.UncheckedIOException;
+import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.FileTime;
 import java.text.SimpleDateFormat;
 import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeFormatterBuilder;
+import java.time.temporal.ChronoField;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.function.Function;
@@ -53,17 +54,19 @@ public class DiffUi extends Application {
     private final Path localPath;
     private final Path remotePath;
     private final Properties cfg;
-
-    private Map<Item, ItemAction> actions;
+    private final Path logs;
+    private final String nick;
 
     private Stage primaryStage;
     private PreviewNode previewLocal;
     private PreviewNode previewRemote;
     private TreeItem<Item> rootItem;
 
-    public DiffUi(Path localPath, Path remotePath, Path cfg) {
+    public DiffUi(Path localPath, Path remotePath, Path cfg, Path logs, String nick) {
         this.localPath = localPath.toAbsolutePath();
         this.remotePath = remotePath.toAbsolutePath();
+        this.logs = logs;
+        this.nick = nick;
 
         try (BufferedReader stream = Files.newBufferedReader(cfg)) {
             this.cfg = new Properties();
@@ -193,12 +196,12 @@ public class DiffUi extends Application {
         }
     }
 
-    private void executeCheckTreeItem(TreeItem<Item> treeItem, boolean checked) {
+    private void executeCheckTreeItem(Map<Item, ItemAction> actions, TreeItem<Item> treeItem, boolean checked, ItemAction positive) {
         Item item = treeItem.getValue();
         if (checked) {
-            ItemAction positive = item.status().positive();
-            markWithChildren(treeItem, positive);
-            a: while (treeItem.getParent() != null) {
+            markWithChildren(actions, treeItem, positive);
+            a:
+            while (treeItem.getParent() != null) {
                 treeItem = treeItem.getParent();
                 item = treeItem.getValue();
                 for (TreeItem<Item> child : treeItem.getChildren()) {
@@ -210,7 +213,7 @@ public class DiffUi extends Application {
                 Event.fireEvent(treeItem, new TreeItem.TreeModificationEvent<>(TreeItem.valueChangedEvent(), treeItem, item));
             }
         } else {
-            markWithChildren(treeItem, ItemAction.NOTHING);
+            markWithChildren(actions, treeItem, ItemAction.NOTHING);
             while (treeItem.getParent() != null) {
                 treeItem = treeItem.getParent();
                 item = treeItem.getValue();
@@ -223,25 +226,26 @@ public class DiffUi extends Application {
         }
     }
 
-    private void markWithChildren(TreeItem<Item> treeItem, ItemAction action) {
+    private void markWithChildren(Map<Item, ItemAction> actions, TreeItem<Item> treeItem, ItemAction action) {
         Item item = treeItem.getValue();
         if (actions.put(item, action) != action) {
             Event.fireEvent(treeItem, new TreeItem.TreeModificationEvent<>(TreeItem.valueChangedEvent(), treeItem, item));
         }
         for (TreeItem<Item> child : treeItem.getChildren()) {
-            markWithChildren(child, action);
+            markWithChildren(actions, child, action);
         }
     }
 
     private VBox files(StackPane root) throws IOException {
         ToggleButton fetch = new ToggleButton("Fetch");
         fetch.setGraphic(downloadIcon());
-        ToggleButton push = new ToggleButton("Push");
         ToggleButton observe = new ToggleButton("Observe");
+        ToggleButton push = new ToggleButton("Push");
+        push.setGraphic(uploadIcon());
         SegmentedButton modes = new SegmentedButton(
                 fetch,
-                push,
-                observe
+                observe,
+                push
         );
         modes.getToggleGroup().selectedToggleProperty().addListener((obsVal, oldVal, newVal) -> {
             if (newVal == null) {
@@ -249,6 +253,227 @@ public class DiffUi extends Application {
             }
         });
 
+        rootItem = loadTree();
+
+        HBox leftPanel = new HBox();
+        HBox rightPanel = new HBox();
+        leftPanel.setAlignment(Pos.CENTER_LEFT);
+        rightPanel.setAlignment(Pos.CENTER_RIGHT);
+        HBox panelWrapper = new HBox(leftPanel, modes, rightPanel);
+        HBox.setHgrow(leftPanel, Priority.ALWAYS);
+        HBox.setHgrow(rightPanel, Priority.ALWAYS);
+
+        StackPane listWrapper = new StackPane();
+        VBox listParent = new VBox(panelWrapper, listWrapper);
+        listParent.setFillWidth(true);
+        VBox.setMargin(panelWrapper, padding);
+        VBox.setVgrow(listWrapper, Priority.ALWAYS);
+
+        fetch.selectedProperty().addListener(new ChangeListener<>() {
+
+            private TreeItem<Item> cachedGlobalRoot;
+            private TreeItem<Item> itemTreeItem;
+
+            final Map<Item, ItemAction> fetchActions = new HashMap<>();
+            final JFXTreeTableView<Item> fetchList = createListComponent(false, false, fetchActions);
+
+            final Button fetchButton = new Button("Fetch selected", downloadIcon());
+
+            {
+                fetchButton.setOnAction(a -> {
+                    for (Map.Entry<Item, ItemAction> entry : fetchActions.entrySet()) {
+                        if (entry.getValue() != ItemAction.REMOTE_TO_LOCAL) {
+                            continue;
+                        }
+
+                        Item item = entry.getKey();
+                        if (item.isSynthetic || !item.remote.isFile) {
+                            continue;
+                        }
+                        try {
+                            Files.createDirectories(item.local.path.getParent());
+                            Files.copy(
+                                    item.remote.path,
+                                    item.local.path,
+                                    StandardCopyOption.REPLACE_EXISTING,
+                                    StandardCopyOption.COPY_ATTRIBUTES
+                            );
+                        } catch (IOException exception) {
+                            exception.printStackTrace();
+                        }
+                    }
+                    fetchActions.clear();
+                    try {
+                        rootItem = loadTree();
+                    } catch (IOException exception) {
+                        throw new UncheckedIOException(exception);
+                    }
+
+                    updateRoot();
+                });
+            }
+
+            private void updateRoot() {
+                cachedGlobalRoot = rootItem;
+                itemTreeItem = DiffUi.this.filterForFetch();
+                fetchList.setRoot(itemTreeItem);
+            }
+
+            @Override
+            public void changed(ObservableValue<? extends Boolean> observable, Boolean oldValue, Boolean newValue) {
+                if (newValue) {
+                    if (cachedGlobalRoot != rootItem) {
+                        updateRoot();
+                        executeCheckTreeItem(fetchActions, itemTreeItem, true, ItemAction.REMOTE_TO_LOCAL);
+                    }
+
+                    leftPanel.getChildren().setAll(fetchButton);
+                    rightPanel.getChildren().clear();
+                    listWrapper.getChildren().setAll(fetchList);
+                }
+            }
+        });
+        push.selectedProperty().addListener(new ChangeListener<>() {
+
+            private DateTimeFormatter dtf = new DateTimeFormatterBuilder()
+                    .appendValue(ChronoField.YEAR, 4)
+                    .appendLiteral('-')
+                    .appendValue(ChronoField.MONTH_OF_YEAR, 2)
+                    .appendLiteral('-')
+                    .appendValue(ChronoField.DAY_OF_MONTH, 2)
+                    .appendLiteral('.')
+                    .appendValue(ChronoField.HOUR_OF_DAY, 2)
+                    .appendLiteral('-')
+                    .appendValue(ChronoField.MINUTE_OF_HOUR, 2)
+                    .appendLiteral('-')
+                    .appendValue(ChronoField.SECOND_OF_MINUTE, 2)
+                    .appendLiteral('.')
+                    .appendLiteral(nick)
+                    .appendLiteral(".txt")
+                    .toFormatter();
+
+            private TreeItem<Item> cachedGlobalRoot;
+            private TreeItem<Item> itemTreeItem;
+            final Map<Item, ItemAction> pushActions = new HashMap<>();
+            final JFXTreeTableView<Item> pushList = createListComponent(false, true, pushActions);
+
+            final Button pushButton = new Button("Push selected", uploadIcon());
+
+            {
+
+                pushButton.setOnAction(a -> {
+                    StringBuilder files = new StringBuilder();
+                    for (Map.Entry<Item, ItemAction> entry : pushActions.entrySet()) {
+                        if (entry.getValue() != ItemAction.LOCAL_TO_REMOTE) {
+                            continue;
+                        }
+
+                        Item item = entry.getKey();
+                        if (item.isSynthetic || !item.remote.isFile) {
+                            continue;
+                        }
+
+                        files.append(item.remote.name).append("\r\n");
+                    }
+                    files.append("\r\n");
+
+                    String text = new TextAreaDialog("Push description", "General description:\r\n\r\nChanged:\r\n" + files).showForText();
+                    if (text == null) {
+                        return;
+                    }
+
+                    for (Map.Entry<Item, ItemAction> entry : pushActions.entrySet()) {
+                        if (entry.getValue() != ItemAction.LOCAL_TO_REMOTE) {
+                            continue;
+                        }
+
+                        Item item = entry.getKey();
+                        if (item.isSynthetic || !item.remote.isFile) {
+                            continue;
+                        }
+
+                        try {
+                            Files.createDirectories(item.remote.path.getParent());
+                            Files.copy(
+                                    item.local.path,
+                                    item.remote.path,
+                                    StandardCopyOption.REPLACE_EXISTING,
+                                    StandardCopyOption.COPY_ATTRIBUTES
+                            );
+                        } catch (IOException exception) {
+                            exception.printStackTrace();
+
+                            StringWriter sw = new StringWriter();
+                            PrintWriter pw = new PrintWriter(sw);
+                            exception.printStackTrace(pw);
+                            text = text + "\r\n" + sw;
+                        }
+                    }
+
+                    try {
+                        Files.createDirectories(logs);
+                        Files.writeString(logs.resolve(LocalDateTime.now(ZoneOffset.UTC).format(dtf)), text);
+                    } catch (IOException exception) {
+                        exception.printStackTrace();
+                    }
+
+                    pushActions.clear();
+                    try {
+                        rootItem = loadTree();
+                    } catch (IOException exception) {
+                        throw new UncheckedIOException(exception);
+                    }
+
+                    updateRoot();
+                });
+            }
+
+            private void updateRoot() {
+                cachedGlobalRoot = rootItem;
+                itemTreeItem = DiffUi.this.filterForPush();
+                pushList.setRoot(itemTreeItem);
+            }
+
+            @Override
+            public void changed(ObservableValue<? extends Boolean> observable, Boolean oldValue, Boolean newValue) {
+                if (newValue) {
+                    if (cachedGlobalRoot != rootItem) {
+                        updateRoot();
+                    }
+                    leftPanel.getChildren().clear();
+                    rightPanel.getChildren().setAll(pushButton);
+                    listWrapper.getChildren().setAll(pushList);
+                }
+            }
+        });
+        observe.selectedProperty().addListener(new ChangeListener<>() {
+
+            private TreeItem<Item> cachedGlobalRoot;
+            private TreeItem<Item> itemTreeItem;
+            final Map<Item, ItemAction> observeActions = new HashMap<>();
+            final JFXTreeTableView<Item> observeList = createListComponent(true, false, observeActions);
+
+            @Override
+            public void changed(ObservableValue<? extends Boolean> observable, Boolean oldValue, Boolean newValue) {
+                if (newValue) {
+                    if (cachedGlobalRoot != rootItem) {
+                        cachedGlobalRoot = rootItem;
+                        itemTreeItem = DiffUi.this.filterForObserve();
+                        observeList.setRoot(itemTreeItem);
+                    }
+                    leftPanel.getChildren().clear();
+                    rightPanel.getChildren().clear();
+                    listWrapper.getChildren().setAll(observeList);
+                }
+            }
+        });
+
+        fetch.fire();
+
+        return listParent;
+    }
+
+    private JFXTreeTableView<Item> createListComponent(boolean observe, boolean push, Map<Item, ItemAction> actions) {
         JFXTreeTableView<Item> list = new JFXTreeTableView<>();
 
         TreeTableColumn<Item, String> name = new TreeTableColumn<>("Name");
@@ -264,13 +489,12 @@ public class DiffUi extends Application {
                 sizeA,
                 sizeB
         );
-        VBox listParent = new VBox(modes, list);
-        listParent.setAlignment(Pos.CENTER);
-        VBox.setMargin(modes, padding);
-        VBox.setVgrow(list, Priority.ALWAYS);
 
         Font regular = Font.font(12);
         Font bold = Font.font(null, FontWeight.BOLD, 12);
+
+        ItemAction positiveAction = push ? ItemAction.LOCAL_TO_REMOTE : ItemAction.REMOTE_TO_LOCAL;
+        ItemAction negativeAction = push ? ItemAction.REMOTE_TO_LOCAL : ItemAction.LOCAL_TO_REMOTE;
 
         name.setCellValueFactory(param -> new SimpleStringProperty(param.getValue().getValue().local.name + " "));
         name.setCellFactory(new Callback<>() {
@@ -280,13 +504,14 @@ public class DiffUi extends Application {
 
                     boolean ignoreUpdate = false;
                     private final CheckBox checkBox = new CheckBox();
+
                     {
                         checkBox.selectedProperty().addListener((observable, oldValue, newValue) -> {
                             if (ignoreUpdate) {
                                 return;
                             }
                             TreeItem<Item> treeItem = getTableRow().getTreeItem();
-                            executeCheckTreeItem(treeItem, newValue);
+                            executeCheckTreeItem(actions, treeItem, newValue, positiveAction);
                         });
                         checkBox.setFocusTraversable(false);
                     }
@@ -309,7 +534,7 @@ public class DiffUi extends Application {
                             if (treeItem != null) {
                                 Item item = treeItem.getValue();
                                 ItemAction action = actions.getOrDefault(item, ItemAction.NOTHING);
-                                if (observe.isSelected()) {
+                                if (observe) {
                                     if (item.status == ItemStatus.CONFLICT) {
                                         setTextFill(Color.RED);
                                         setFont(bold);
@@ -327,10 +552,10 @@ public class DiffUi extends Application {
                                     super.setGraphic(null);
                                 } else {
 
-                                    if (action == item.status.negative()) {
+                                    if (action == negativeAction) {
                                         setTextFill(Color.RED);
                                         setFont(bold);
-                                    } else if (action == item.status.positive()) {
+                                    } else if (action == positiveAction) {
                                         setTextFill(Color.DARKBLUE);
                                         setFont(bold);
                                     } else {
@@ -341,7 +566,7 @@ public class DiffUi extends Application {
                                     if (!item.isSynthetic) {
                                         boolean old = ignoreUpdate;
                                         ignoreUpdate = true;
-                                        checkBox.setSelected(action == item.status.positive());
+                                        checkBox.setSelected(action != ItemAction.NOTHING);
                                         ignoreUpdate = old;
                                         super.setGraphic(checkBox);
                                     } else {
@@ -488,7 +713,7 @@ public class DiffUi extends Application {
                                                         item.local.path.resolveSibling(item.local.path.getFileName() + "?" + localName),
                                                         localName,
                                                         null,
-                                                        localMeta == null ? null : (long)localMeta.uncompressedSize,
+                                                        localMeta == null ? null : (long) localMeta.uncompressedSize,
                                                         false,
                                                         localMeta != null
                                                 );
@@ -496,7 +721,7 @@ public class DiffUi extends Application {
                                                         item.remote.path.resolveSibling(item.remote.path.getFileName() + "?" + remoteName),
                                                         remoteName,
                                                         null,
-                                                        remoteMeta == null ? null : (long)remoteMeta.uncompressedSize,
+                                                        remoteMeta == null ? null : (long) remoteMeta.uncompressedSize,
                                                         false,
                                                         remoteMeta != null
                                                 );
@@ -518,7 +743,7 @@ public class DiffUi extends Application {
             }
         });
         list.setOnKeyTyped(k -> {
-            if (!" ".equals(k.getCharacter())) {
+            if (observe || !" ".equals(k.getCharacter())) {
                 return;
             }
             TreeItem<Item> treeItem = list.getSelectionModel().getSelectedItem();
@@ -527,8 +752,8 @@ public class DiffUi extends Application {
             }
             Item item = treeItem.getValue();
             ItemAction a = actions.getOrDefault(item, ItemAction.NOTHING);
-            ItemAction target = item.status.positive();
-            executeCheckTreeItem(treeItem, a != target);
+            ItemAction target = push ? ItemAction.LOCAL_TO_REMOTE : ItemAction.REMOTE_TO_LOCAL;
+            executeCheckTreeItem(actions, treeItem, a != target, target);
         });
         list.getSelectionModel().selectedIndexProperty().addListener((observable, oldValue, newValue) -> {
             if (newValue != null) {
@@ -536,54 +761,9 @@ public class DiffUi extends Application {
             }
         });
 
-        rootItem = loadTree();
-
         list.setShowRoot(false);
         list.setFixedCellSize(20);
-
-        fetch.selectedProperty().addListener(new ChangeListener<>() {
-
-            final Map<Item, ItemAction> fetchActions = new HashMap<>();
-
-            @Override
-            public void changed(ObservableValue<? extends Boolean> observable, Boolean oldValue, Boolean newValue) {
-                if (newValue) {
-                    actions = fetchActions;
-                    list.setRoot(DiffUi.this.filterForFetch());
-                    list.refresh();
-                }
-            }
-        });
-        push.selectedProperty().addListener(new ChangeListener<>() {
-
-            final Map<Item, ItemAction> pushActions = new HashMap<>();
-
-            @Override
-            public void changed(ObservableValue<? extends Boolean> observable, Boolean oldValue, Boolean newValue) {
-                if (newValue) {
-                    //actions = pushActions;
-                    //list.setRoot(filterForPush());
-                }
-            }
-        });
-        observe.selectedProperty().addListener(new ChangeListener<>() {
-
-            final Map<Item, ItemAction> observeActions = new HashMap<>();
-
-            @Override
-            public void changed(ObservableValue<? extends Boolean> observable, Boolean oldValue, Boolean newValue) {
-                if (newValue) {
-                    actions = observeActions;
-                    list.setRoot(DiffUi.this.filterForObserve());
-                    list.refresh();
-                }
-            }
-        });
-
-        fetch.fire();
-        executeCheckTreeItem(list.getRoot(), true);
-
-        return listParent;
+        return list;
     }
 
     private TreeItem<Item> filterForObserve() {
@@ -598,7 +778,8 @@ public class DiffUi extends Application {
             }
             return item;
         };
-        return filter(rootItem, preFilter, fold);
+        TreeItem<Item> filter = filter(rootItem, preFilter, fold);
+        return filter == null ? new TreeItem<>(rootItem.getValue()) : filter;
     }
 
     private TreeItem<Item> filterForFetch() {
@@ -606,8 +787,7 @@ public class DiffUi extends Application {
             if (!item.getChildren().isEmpty()) {
                 return true;
             }
-            return item.getValue().status == ItemStatus.REMOTE_NEWER
-                    || item.getValue().status == ItemStatus.CONFLICT;
+            return item.getValue().status == ItemStatus.REMOTE_NEWER;
         };
         Function<TreeItem<Item>, TreeItem<Item>> fold = item -> {
             if (item.getChildren().size() == 1) {
@@ -622,7 +802,32 @@ public class DiffUi extends Application {
             item.setExpanded(true);
             return item;
         };
-        return filter(rootItem, preFilter, fold);
+        TreeItem<Item> filter = filter(rootItem, preFilter, fold);
+        return filter == null ? new TreeItem<>(rootItem.getValue()) : filter;
+    }
+
+    private TreeItem<Item> filterForPush() {
+        Predicate<TreeItem<Item>> preFilter = item -> {
+            if (!item.getChildren().isEmpty()) {
+                return true;
+            }
+            return item.getValue().status == ItemStatus.LOCAL_NEWER;
+        };
+        Function<TreeItem<Item>, TreeItem<Item>> fold = item -> {
+            if (item.getChildren().size() == 1) {
+                TreeItem<Item> treeItem = item.getChildren().remove(0);
+                treeItem.setValue(treeItem.getValue().foldInto(item.getValue()));
+                return treeItem;
+            } else if (item.getChildren().isEmpty()) {
+                if (!item.getValue().local.isFile && !item.getValue().remote.isFile) {
+                    return null;
+                }
+            }
+            item.setExpanded(true);
+            return item;
+        };
+        TreeItem<Item> filter = filter(rootItem, preFilter, fold);
+        return filter == null ? new TreeItem<>(rootItem.getValue()) : filter;
     }
 
     private TreeItem<Item> filter(
@@ -701,12 +906,33 @@ public class DiffUi extends Application {
         Pattern ignoreLocal = Pattern.compile("(" + cfg.getProperty("ignore.local", "$^") + ")|(" + ignoreCommon + ")");
         Pattern ignoreRemote = Pattern.compile("(" + cfg.getProperty("ignore.remote", "$^") + ")|(" + ignoreCommon + ")");
 
-        Set<Path> allPaths = new TreeSet<>();
+        List<Path> localPaths = new ArrayList<>();
+        List<Path> remotePaths = new ArrayList<>();
         try (Stream<Path> w1 = Files.walk(localPath); Stream<Path> w2 = Files.walk(remotePath)) {
-            w1.filter(p -> !ignoreLocal.matcher(p.toAbsolutePath().normalize().toString()).matches()).forEach(l -> allPaths.add(localPath.relativize(l)));
-            w2.filter(p -> !ignoreRemote.matcher(p.toAbsolutePath().normalize().toString()).matches()).forEach(l -> allPaths.add(remotePath.relativize(l)));
+            w1.filter(p -> !ignoreLocal.matcher(p.toAbsolutePath().normalize().toString()).matches()).forEach(l -> localPaths.add(localPath.relativize(l)));
+            w2.filter(p -> !ignoreRemote.matcher(p.toAbsolutePath().normalize().toString()).matches()).forEach(l -> remotePaths.add(remotePath.relativize(l)));
         }
+
+        scanLocal(localPaths);
+
+        Set<Path> allPaths = new TreeSet<>();
+        allPaths.addAll(remotePaths);
+        allPaths.addAll(localPaths);
         return allPaths;
+    }
+
+    private void scanLocal(List<Path> localPaths) {
+        if (false) {
+            return;
+        }
+        for (Path path : localPaths) {
+            String name = path.getFileName().toString().toLowerCase();
+            if (name.endsWith(".def")) {
+                ImgFilesUtils.validateDef(localPath.resolve(path));
+            } else if (name.endsWith(".lod")) {
+
+            }
+        }
     }
 
     private void show(TreeItem<Item> treeItem) {
@@ -729,25 +955,9 @@ public class DiffUi extends Application {
 
     enum ItemStatus {
         SAME,
-        LOCAL_NEWER {
-            ItemAction negative() {
-                return ItemAction.REMOTE_TO_LOCAL;
-            }
-
-            ItemAction positive() {
-                return ItemAction.LOCAL_TO_REMOTE;
-            }
-        },
+        LOCAL_NEWER,
         REMOTE_NEWER,
-        CONFLICT;
-
-        ItemAction negative() {
-            return ItemAction.LOCAL_TO_REMOTE;
-        }
-
-        ItemAction positive() {
-            return ItemAction.REMOTE_TO_LOCAL;
-        }
+        CONFLICT
     }
 
     enum ItemAction {
@@ -760,6 +970,15 @@ public class DiffUi extends Application {
         String d = "M8.05,15.15H1.31C.52,15.15.2,14.83.2,14v-2.7a.9.9,0,0,1,1-1H5.27a.57.57,0,0,1,.37.16c.36.34.71.71,1.06,1.06a1.82,1.82,0,0,0,2.68,0c.36-.36.71-.73,1.09-1.08a.61.61,0,0,1,.37-.15h4a.92.92,0,0,1,1,1v2.79a.9.9,0,0,1-1,1Zm3.62-2.4a.6.6,0,1,0,0,1.19.6.6,0,1,0,0-1.19Zm1.82.61a.58.58,0,0,0,.61.58.6.6,0,1,0-.61-.58ZM6.23,5.5v-4c0-.6.2-.79.8-.79H9.11c.53,0,.74.21.75.74,0,1.25,0,2.51,0,3.76,0,.26.07.34.33.33.66,0,1.32,0,2,0a.63.63,0,0,1,.66.39.61.61,0,0,1-.2.71l-4.1,4.09a.6.6,0,0,1-1,0L3.48,6.61a.61.61,0,0,1-.21-.73.63.63,0,0,1,.66-.38h2.3Z";
         SVGPath path = new SVGPath();
         path.setFill(Color.CORNFLOWERBLUE);
+        path.setStroke(null);
+        path.setContent(d);
+        return path;
+    }
+
+    private static Node uploadIcon() {
+        String d = "M16,9.64v.74a.54.54,0,0,0,0,.1,3.55,3.55,0,0,1-.46,1.35,3.68,3.68,0,0,1-3.35,1.89H3.37a3.49,3.49,0,0,1-1-.13A3.21,3.21,0,0,1,.07,10,3.13,3.13,0,0,1,1.51,7.78a.19.19,0,0,0,.1-.26,2,2,0,0,1,.1-1.43A2.2,2.2,0,0,1,4.3,4.82a.16.16,0,0,0,.22-.1,3.13,3.13,0,0,1,.19-.36A4.46,4.46,0,0,1,9.79,2.43a4.38,4.38,0,0,1,3.14,3.69c0,.16.1.2.23.24A3.63,3.63,0,0,1,15.8,8.79,5.85,5.85,0,0,1,16,9.64ZM7,9.18v1.94a.5.5,0,0,0,.55.56h.89A.5.5,0,0,0,9,11.12V9.36c0-.06,0-.11,0-.18h1a.48.48,0,0,0,.45-.29.49.49,0,0,0-.12-.53l-2-1.93a.49.49,0,0,0-.77,0l-2,1.93a.49.49,0,0,0-.12.53A.49.49,0,0,0,6,9.17H7Z";
+        SVGPath path = new SVGPath();
+        path.setFill(Color.GOLDENROD);
         path.setStroke(null);
         path.setContent(d);
         return path;

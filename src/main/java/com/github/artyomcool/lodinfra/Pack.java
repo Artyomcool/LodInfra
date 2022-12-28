@@ -306,10 +306,12 @@ public class Pack {
 
         String leftDir = arguments.getProperty("left_dir");
         String rightDir = arguments.getProperty("right_dir");
+        String logs = arguments.getProperty("logsPath", "logs");
+        String nick = arguments.getProperty("userName", "unknown");
 
         String cfgDir = arguments.getProperty("commonCfgDir");
 
-        DiffUi gui = new DiffUi(Path.of(leftDir), Path.of(rightDir), Path.of(cfgDir, "diff.cfg"));
+        DiffUi gui = new DiffUi(Path.of(leftDir), Path.of(rightDir), Path.of(cfgDir, "diff.cfg"), self.resolve(logs).resolve("sync"), nick);
 
         run(gui);
     }

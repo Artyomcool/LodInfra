@@ -399,6 +399,89 @@ public class ImgFilesUtils {
         return image;
     }
 
+    public static void validateDef(Path path) {
+        processFile(path, null, buffer -> {
+            int type = buffer.getInt();
+            int fullWidth = buffer.getInt();
+            int fullHeight = buffer.getInt();
+
+            int groupCount = buffer.getInt();
+            int[] palette = new int[256];
+            for (int i = 0; i < palette.length; i++) {
+                palette[i] = 0xff000000 | (buffer.get() & 0xff) << 16 | (buffer.get() & 0xff) << 8 | (buffer.get() & 0xff);
+            }
+
+            byte[] name = new byte[13];
+            String[] names;
+
+            Map<String, String> remap = new LinkedHashMap<>();
+            Map<ByteBuffer, String> shouldBeNamed = new LinkedHashMap<>();
+
+            int position = buffer.position();
+            for (int i = 0; i < groupCount; i++) {
+                buffer.position(position);
+
+                int groupType = buffer.getInt();
+                int framesCount = buffer.getInt();
+                buffer.getInt();
+                buffer.getInt();
+
+                names = new String[framesCount];
+                for (int j = 0; j < framesCount; j++) {
+                    int namePos = buffer.position();
+                    buffer.get(name);
+                    try {
+                        int q = 0;
+                        while (name[q] != 0) {
+                            q++;
+                        }
+                        names[j] = new String(name, 0, q);
+                    } catch (IndexOutOfBoundsException e) {
+                        names[j] = new String(name);
+                        //System.err.println(path + " has wrong name at " + j + "/" + framesCount + " " + new String(name) + " " + LocalDate.ofInstant(Files.getLastModifiedTime(path).toInstant(), ZoneId.systemDefault()));
+                    }
+
+                    int groupIndex = i;
+                    int frameIndex = j;
+                    String old = names[j];
+                    String newName = remap.computeIfAbsent(old, k -> {
+                        String defName = path.getFileName().toString();
+                        defName = defName.substring(0, defName.indexOf("."));
+                        if (defName.length() > 8) {
+                            defName = defName.substring(0, 4) + defName.substring(defName.length() - 4);
+                        }
+                        return defName + (char)((int)'A' + groupIndex) + String.format("%03d", frameIndex);
+                    });
+
+                    if (!old.equals(newName)) {
+                        names[j] = newName;
+                        Arrays.fill(name, (byte)0);
+                        newName.getBytes(0, newName.length(), name, 0);
+                        //buffer.position(namePos).put(name);
+                        System.out.println(path.getFileName() + " " + groupIndex + " " + frameIndex + " " + newName + " " + old);
+                    }
+                }
+
+                int[] offsets = new int[framesCount];
+                for (int j = 0; j < framesCount; j++) {
+                    offsets[j] = buffer.getInt();   //offset
+                }
+
+                position = buffer.position();
+
+                for (int p = 0; p < framesCount; p++) {
+                    //String n = names[p];
+                    //String was = shouldBeNamed.put(buffer.slice(offsets[p], buffer.getInt(offsets[p])), n);
+                    //if (was != null && !was.equals(n)) {
+                    //    System.out.println("Exactly same data with different names: " + path + " " + n + " (duplicates " + was + ")");
+                    //}
+                }
+            }
+
+            return null;
+        });
+    }
+
     interface Processor<R> {
         R process(ByteBuffer buffer) throws IOException;
     }
