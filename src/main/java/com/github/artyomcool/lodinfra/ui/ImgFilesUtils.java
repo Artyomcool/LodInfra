@@ -233,7 +233,7 @@ public class ImgFilesUtils {
                     LodFile lod = LodFile.parse(buffer);
                     String name = s.substring(s.indexOf("?") + 1);
                     for (LodFile.SubFileMeta subFile : lod.subFiles) {
-                        if (name.equals(new String(subFile.name).trim())) {
+                        if (name.equals(subFile.nameAsString)) {
                             if (subFile.compressedSize != 0) {
                                 ByteBuffer uncompressed = ByteBuffer.allocate(subFile.uncompressedSize);
                                 Inflater inflater = new Inflater();
@@ -321,6 +321,13 @@ public class ImgFilesUtils {
         WritableImage image = new WritableImage(fullWidth, fullHeight);
 
         switch (compression) {
+            case 0 -> {
+                for (int i = 0; i < height; i++) {
+                    for (int j = 0; j < width; j++) {
+                        image.getPixelWriter().setArgb(x + j, y + i, palette[buffer.get() & 0xff]);
+                    }
+                }
+            }
             case 1 -> {
                 int[] offsets = new int[height];
                 for (int i = 0; i < offsets.length; i++) {

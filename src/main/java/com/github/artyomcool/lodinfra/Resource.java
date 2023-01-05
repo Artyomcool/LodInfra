@@ -76,7 +76,7 @@ public class Resource {
     }
 
     public static Resource fromLod(Path holderPath, LodFile file, LodFile.SubFileMeta meta) {
-        String name = new String(meta.name).trim();
+        String name = meta.nameAsString;
         return new Resource(
                 meta.fileType,
                 null,

@@ -13,6 +13,7 @@ public class LodFile {
     public static final int MAGIC = 0x00444f4c;   // LOD\0 in little endian
 
     public static class SubFileMeta {
+        public String nameAsString;
         public byte[] name = new byte[16];
         public int globalOffsetInFile;
         public int uncompressedSize;
@@ -62,6 +63,7 @@ public class LodFile {
             SubFileMeta meta = new SubFileMeta();
 
             byteBuffer.get(meta.name);
+            meta.nameAsString = new String(meta.name, 0, indexOfZero(meta.name));
             meta.globalOffsetInFile = byteBuffer.getInt();
             meta.uncompressedSize = byteBuffer.getInt();
             meta.fileType = byteBuffer.getInt();
@@ -71,6 +73,15 @@ public class LodFile {
         }
 
         return result;
+    }
+
+    private static int indexOfZero(byte[] name) {
+        for (int i = 0; i < name.length; i++) {
+            if (name[i] == 0) {
+                return i;
+            }
+        }
+        return name.length;
     }
 
 }

@@ -49,7 +49,7 @@ public class PreviewNode extends StackPane {
         }
 
         this.file = file;
-        String fileName = file.getFileName().toString();
+        String fileName = file.getFileName().toString().toLowerCase();
 
         previousLoad.cancel(true);
 

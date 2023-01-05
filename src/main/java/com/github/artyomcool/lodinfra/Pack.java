@@ -243,7 +243,7 @@ public class Pack {
 
                 LodFile lodFile = LodFile.load(path);
                 for (LodFile.SubFileMeta subFile : lodFile.subFiles) {
-                    String name = new String(subFile.name).trim();
+                    String name = subFile.nameAsString;
                     Path toStore = self.resolve(Path.of(lang + "@" + lod, name));
                     if (Boolean.parseBoolean(dryRun)) {
                         continue;

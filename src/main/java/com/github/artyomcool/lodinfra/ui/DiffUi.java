@@ -684,7 +684,7 @@ public class DiffUi extends Application {
                                             if (item.local.isFile) {
                                                 LodFile lod = LodFile.load(item.local.path);
                                                 for (LodFile.SubFileMeta subFile : lod.subFiles) {
-                                                    String name = new String(subFile.name).trim().toLowerCase();
+                                                    String name = subFile.nameAsString.toLowerCase();
                                                     allResources.add(name);
                                                     localMapping.put(name, subFile);
                                                 }
@@ -692,7 +692,7 @@ public class DiffUi extends Application {
                                             if (item.remote.isFile) {
                                                 LodFile lod = LodFile.load(item.remote.path);
                                                 for (LodFile.SubFileMeta subFile : lod.subFiles) {
-                                                    String name = new String(subFile.name).trim().toLowerCase();
+                                                    String name = subFile.nameAsString.toLowerCase();
                                                     allResources.add(name);
                                                     remoteMapping.put(name, subFile);
                                                 }
@@ -704,12 +704,12 @@ public class DiffUi extends Application {
                                                 LodFile.SubFileMeta remoteMeta = remoteMapping.get(res);
 
                                                 String localName = localMeta == null
-                                                        ? new String(remoteMeta.name).trim()
-                                                        : new String(localMeta.name).trim();
+                                                        ? remoteMeta.nameAsString
+                                                        : localMeta.nameAsString;
 
                                                 String remoteName = remoteMeta == null
-                                                        ? new String(localMeta.name).trim()
-                                                        : new String(remoteMeta.name).trim();
+                                                        ? localMeta.nameAsString
+                                                        : remoteMeta.nameAsString;
 
 
                                                 FileInfo localFile = new FileInfo(
