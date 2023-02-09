@@ -179,12 +179,25 @@ public class DirectoryResourceCollector {
     private Map<Path, String> writeLods(Map<Path, LodResources> lodToResource) throws IOException, DataFormatException {
         Map<Path, String> logsByLod = new LinkedHashMap<>();
 
+        TreeSet<String> removed;
+        if (previouslyModifiedAt != null) {
+            removed = new TreeSet<>(previouslyModifiedAt.keySet());
+            removed.removeAll(nowModifiedAt.keySet());
+        } else {
+            removed = new TreeSet<>();
+        }
+
         try (ResourcePreprocessor resourcePreprocessor = new ResourcePreprocessor(compressionLevel)) {
 
             for (Map.Entry<Path, LodResources> entry : lodToResource.entrySet()) {
                 Path lodPath = entry.getKey();
-                if (entry.getValue().resourcesByName.isEmpty()) {
-                    continue;
+
+                String suffix = entry.getValue().lodName + "^";
+                String ceilingRemovedResource = removed.ceiling(suffix);
+                if (ceilingRemovedResource == null || !ceilingRemovedResource.startsWith(suffix)) {
+                    if (entry.getValue().resourcesByName.isEmpty()) {
+                        continue;
+                    }
                 }
 
                 System.out.println("Packing " + lodPath);
@@ -210,11 +223,8 @@ public class DirectoryResourceCollector {
                 if (previouslyModifiedAt == null) {
                     lodFilePatch.removeAllFromOriginal();
                 } else {
-                    for (var res : previouslyModifiedAt.entrySet()) {
-                        Instant nowModifiedAt = this.nowModifiedAt.get(res.getKey());
-                        if (nowModifiedAt == null) {
-                            lodFilePatch.removeFromOriginal(res.getKey().substring(res.getKey().indexOf('^') + 1));
-                        }
+                    for (var res : removed) {
+                        lodFilePatch.removeFromOriginal(res.substring(res.indexOf('^') + 1));
                     }
                 }
 
