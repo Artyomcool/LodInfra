@@ -166,14 +166,14 @@ public class DirectoryResourceCollector {
             System.out.println("Ignored " + ignored + " files, changed " + changed);
         }
 
+        nowModifiedAt = previouslyModifiedAt == null ? null : currentResourcesTimestamps;
+
         Map<Path, String> logsByLod = writeLods(lodToResource);
         System.out.println("Lods written");
 
         if (logDetailedDiff) {
             writeLog(logsByLod);
         }
-
-        nowModifiedAt = previouslyModifiedAt == null ? null : currentResourcesTimestamps;
     }
 
     private Map<Path, String> writeLods(Map<Path, LodResources> lodToResource) throws IOException, DataFormatException {
@@ -189,7 +189,6 @@ public class DirectoryResourceCollector {
 
                 System.out.println("Packing " + lodPath);
                 System.out.println("Preprocess resources");
-                String lodPrefix = entry.getValue().lodName + "^";
 
                 for (Map.Entry<String, Resource> resource : entry.getValue().resourcesByName.entrySet()) {
                     String lowName = resource.getValue().name.toLowerCase();
@@ -211,9 +210,10 @@ public class DirectoryResourceCollector {
                 if (previouslyModifiedAt == null) {
                     lodFilePatch.removeAllFromOriginal();
                 } else {
-                    for (String resourceName : previouslyModifiedAt.keySet()) {
-                        if (resourceName.startsWith(lodPrefix)) {
-                            lodFilePatch.removeFromOriginal(resourceName);
+                    for (var res : previouslyModifiedAt.entrySet()) {
+                        Instant nowModifiedAt = this.nowModifiedAt.get(res.getKey());
+                        if (nowModifiedAt == null) {
+                            lodFilePatch.removeFromOriginal(res.getKey().substring(res.getKey().indexOf('^') + 1));
                         }
                     }
                 }
