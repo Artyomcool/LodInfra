@@ -6,6 +6,7 @@ import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.*;
+import java.util.stream.Collectors;
 import java.util.zip.DataFormatException;
 
 public class LodFilePatch {
@@ -41,6 +42,15 @@ public class LodFilePatch {
         name = Resource.sanitizeName(name);
         if (originalResourcesByName.containsKey(name)) {
             removedByName.add(name);
+        }
+    }
+
+    public void retainOriginal(Collection<String> retain) {
+        Set<String> sanitized = retain.stream().map(Resource::sanitizeName).collect(Collectors.toSet());
+        for (String key : originalResourcesByName.keySet()) {
+            if (!sanitized.contains(key)) {
+                removedByName.add(key);
+            }
         }
     }
 
@@ -255,5 +265,4 @@ public class LodFilePatch {
     private static String nameToString(byte[] name) {
         return new String(name).trim();
     }
-
 }

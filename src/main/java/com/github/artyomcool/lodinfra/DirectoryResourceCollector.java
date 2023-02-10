@@ -180,11 +180,14 @@ public class DirectoryResourceCollector {
         Map<Path, String> logsByLod = new LinkedHashMap<>();
 
         TreeSet<String> removed;
+        TreeSet<String> retained;
         if (previouslyModifiedAt != null) {
+            retained = new TreeSet<>(nowModifiedAt.keySet());
             removed = new TreeSet<>(previouslyModifiedAt.keySet());
             removed.removeAll(nowModifiedAt.keySet());
         } else {
             removed = new TreeSet<>();
+            retained = new TreeSet<>();
         }
 
         try (ResourcePreprocessor resourcePreprocessor = new ResourcePreprocessor(compressionLevel)) {
@@ -223,9 +226,10 @@ public class DirectoryResourceCollector {
                 if (previouslyModifiedAt == null) {
                     lodFilePatch.removeAllFromOriginal();
                 } else {
-                    for (var res : removed) {
-                        lodFilePatch.removeFromOriginal(res.substring(res.indexOf('^') + 1));
-                    }
+                    NavigableSet<String> currentLodRetain = retained
+                            .tailSet(suffix, false)
+                            .headSet(entry.getValue().lodName + (char) ('^' + 1), false);
+                    lodFilePatch.retainOriginal(currentLodRetain);
                 }
 
                 for (Resource resource : entry.getValue().resourcesByName.values()) {
