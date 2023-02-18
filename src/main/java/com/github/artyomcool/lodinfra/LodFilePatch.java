@@ -15,9 +15,9 @@ public class LodFilePatch {
     private static final int SUB_FILE_HEADER_SIZE = getLodMetaHeaderSize();
 
     private final LodFile file;
-    private final Map<String, Resource> originalResourcesByName = new LinkedHashMap<>();
-    private final Set<String> removedByName = new LinkedHashSet<>();
-    private final Map<String, Resource> patchesByName = new LinkedHashMap<>();
+    private final Map<String, Resource> originalResourcesByName = new TreeMap<>();
+    private final Set<String> removedByName = new TreeSet<>();
+    private final Map<String, Resource> patchesByName = new TreeMap<>();
 
     private final ResourcePreprocessor preprocessor;
 

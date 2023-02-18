@@ -226,9 +226,12 @@ public class DirectoryResourceCollector {
                 if (previouslyModifiedAt == null) {
                     lodFilePatch.removeAllFromOriginal();
                 } else {
-                    NavigableSet<String> currentLodRetain = retained
+                    List<String> currentLodRetain = retained
                             .tailSet(suffix, false)
-                            .headSet(entry.getValue().lodName + (char) ('^' + 1), false);
+                            .headSet(entry.getValue().lodName + (char) ('^' + 1), false)
+                            .stream()
+                            .map(k -> k.substring(suffix.length()))
+                            .toList();
                     lodFilePatch.retainOriginal(currentLodRetain);
                 }
 
