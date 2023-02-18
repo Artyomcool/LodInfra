@@ -460,12 +460,12 @@ public class ImgFilesUtils {
                         return defName + (char)((int)'A' + groupIndex) + String.format("%03d", frameIndex);
                     });
 
-                    if (!old.equals(newName)) {
+                    if (!old.startsWith("0w_") && !old.equals(newName)) {
                         names[j] = newName;
                         Arrays.fill(name, (byte)0);
                         newName.getBytes(0, newName.length(), name, 0);
                         //buffer.position(namePos).put(name);
-                        System.out.println(path.getFileName() + " " + groupIndex + " " + frameIndex + " " + newName + " " + old);
+                        System.out.println("Def has wrong naming: " + path + "; groupIndex: " + groupIndex + "; frameIndex: " + frameIndex + "; should be named: " + newName + "; current name:" + old);
                     }
                 }
 
