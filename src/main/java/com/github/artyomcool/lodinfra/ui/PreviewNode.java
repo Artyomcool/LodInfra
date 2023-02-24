@@ -1,6 +1,5 @@
 package com.github.artyomcool.lodinfra.ui;
 
-import com.github.artyomcool.lodinfra.LodFile;
 import javafx.animation.Interpolator;
 import javafx.animation.KeyFrame;
 import javafx.animation.KeyValue;
@@ -10,16 +9,9 @@ import javafx.beans.property.SimpleIntegerProperty;
 import javafx.scene.control.Label;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
-import javafx.scene.image.WritableImage;
 import javafx.scene.layout.StackPane;
 import javafx.util.Duration;
 
-import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
-import java.nio.MappedByteBuffer;
-import java.nio.channels.FileChannel;
-import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
@@ -61,7 +53,7 @@ public class PreviewNode extends StackPane {
         if (fileName.endsWith(".png") || fileName.endsWith(".bmp")) {
             previousLoad = CompletableFuture.runAsync(() -> apply(new Image(file.toAbsolutePath().toUri().toString())), executor);
         } else if (fileName.endsWith(".def")) {
-            previousLoad = CompletableFuture.runAsync(() -> apply(loadDef(file)), executor);
+            previousLoad = CompletableFuture.runAsync(() -> apply(loadDef(file).values()), executor);
         } else if (fileName.endsWith(".p32")) {
             previousLoad = CompletableFuture.runAsync(() -> apply(loadP32(file)), executor);
         } else if (fileName.endsWith(".d32")) {
@@ -73,6 +65,10 @@ public class PreviewNode extends StackPane {
 
     private void apply(Image image) {
         apply(image == null ? Collections.emptyList() : Collections.singletonList(image));
+    }
+
+    private void apply(Collection<Image> images) {
+        apply(new ArrayList<>(images));
     }
 
     private void apply(List<Image> images) {

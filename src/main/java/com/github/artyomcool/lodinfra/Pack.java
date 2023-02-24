@@ -1,5 +1,6 @@
 package com.github.artyomcool.lodinfra;
 
+import com.github.artyomcool.lodinfra.h3common.LodFile;
 import com.github.artyomcool.lodinfra.ui.DiffUi;
 import com.github.artyomcool.lodinfra.ui.Gui;
 import javafx.application.Application;
@@ -7,7 +8,6 @@ import javafx.application.Platform;
 import javafx.stage.Stage;
 
 import java.io.*;
-import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
@@ -16,11 +16,10 @@ import java.util.*;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.zip.DataFormatException;
-import java.util.zip.Inflater;
 
 public class Pack {
 
-    private static final String VERSION = "1.1";
+    private static final String VERSION = "1.2";
 
     public static void main(String[] a) throws IOException {
         System.out.println("Version: " + VERSION);
@@ -252,25 +251,8 @@ public class Pack {
                         continue;
                     }
 
-                    byte[] data;
-
                     Files.createDirectories(toStore.getParent());
-                    if (subFile.compressedSize == 0) {
-                        ByteBuffer buffer =
-                                lodFile.originalData.slice(subFile.globalOffsetInFile, subFile.uncompressedSize);
-                        data = new byte[buffer.remaining()];
-                        buffer.get(data);
-                    } else {
-                        byte[] uncompressed = new byte[subFile.uncompressedSize];
-                        Inflater inflater = new Inflater();
-                        inflater.setInput(
-                                lodFile.originalData.slice(subFile.globalOffsetInFile, subFile.compressedSize)
-                        );
-                        inflater.inflate(uncompressed);
-                        inflater.end();
-
-                        data = uncompressed;
-                    }
+                    byte[] data = subFile.asBytes();
 
                     if (name.toLowerCase().endsWith(".pcx")) {
                         if (data[0] == 0x50 && data[1] == 0x33 && data[2] == 0x32 && data[3] == 0x46){

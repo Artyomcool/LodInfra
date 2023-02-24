@@ -1,6 +1,11 @@
 package com.github.artyomcool.lodinfra.ui;
 
-import com.github.artyomcool.lodinfra.LodFile;
+import ar.com.hjg.pngj.ImageInfo;
+import ar.com.hjg.pngj.ImageLineByte;
+import ar.com.hjg.pngj.PngWriter;
+import ar.com.hjg.pngj.chunks.PngChunkPLTE;
+import com.github.artyomcool.lodinfra.h3common.Def;
+import com.github.artyomcool.lodinfra.h3common.LodFile;
 import com.jfoenix.controls.JFXTreeTableView;
 import com.jfoenix.controls.datamodels.treetable.RecursiveTreeObject;
 import javafx.application.Application;
@@ -15,6 +20,7 @@ import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
+import javafx.scene.image.Image;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.SVGPath;
@@ -25,6 +31,8 @@ import javafx.util.Callback;
 import org.controlsfx.control.SegmentedButton;
 
 import java.io.*;
+import java.nio.MappedByteBuffer;
+import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -32,7 +40,6 @@ import java.nio.file.attribute.FileTime;
 import java.text.SimpleDateFormat;
 import java.time.Instant;
 import java.time.LocalDateTime;
-import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeFormatterBuilder;
@@ -675,7 +682,8 @@ public class DiffUi extends Application {
                             if (e.getClickCount() == 2) {
                                 TreeItem<Item> treeItem = getTreeItem();
                                 if (treeItem.getChildren().isEmpty() && (item.local.isFile || item.remote.isFile)) {
-                                    if (item.local.name.toLowerCase().endsWith(".lod")) {
+                                    String itemName = item.local.name.toLowerCase();
+                                    if (itemName.endsWith(".lod")) {
                                         TreeSet<String> allResources = new TreeSet<>();
                                         Map<String, LodFile.SubFileMeta> localMapping = new HashMap<>();
                                         Map<String, LodFile.SubFileMeta> remoteMapping = new HashMap<>();
@@ -736,6 +744,160 @@ public class DiffUi extends Application {
                                         } catch (IOException ex) {
                                             ex.printStackTrace();
                                         }
+                                    } else if (itemName.endsWith(".def")) {
+                                        Path path = item.local.path.resolveSibling("[" + item.local.path.getFileName() + "]");
+                                        ButtonType justOpen = new ButtonType("Just open");
+                                        ButtonType rewrite = new ButtonType("Rewrite");
+                                        ButtonType unpack = new ButtonType("Unpack");
+
+                                        Alert dialog;
+                                        if (Files.exists(path)) {
+                                            dialog = new Alert(
+                                                    Alert.AlertType.WARNING,
+                                                    "This def already unpacked. Rewrite?",
+                                                    justOpen,
+                                                    rewrite,
+                                                    ButtonType.CANCEL
+                                            );
+                                        } else {
+                                            dialog = new Alert(
+                                                    Alert.AlertType.CONFIRMATION,
+                                                    "Unpack this def?",
+                                                    unpack,
+                                                    ButtonType.CANCEL
+                                            );
+                                        }
+
+                                        Optional<ButtonType> shown = dialog.showAndWait();
+                                        if (shown.isEmpty()) {
+                                            return;
+                                        }
+                                        ButtonType buttonType = shown.get();
+                                        if (buttonType.getButtonData() == ButtonBar.ButtonData.CANCEL_CLOSE) {
+                                            return;
+                                        }
+
+                                        if (buttonType == unpack) {
+                                            try {
+                                                Files.createDirectory(path);
+                                            } catch (IOException ex) {
+                                                ex.printStackTrace();
+                                            }
+                                        }
+                                        if (buttonType == unpack || buttonType == rewrite) {
+                                            Path p = item.local.path;
+                                            try (FileChannel channel = FileChannel.open(p)) {
+                                                MappedByteBuffer buffer = channel.map(FileChannel.MapMode.READ_ONLY, 0, Files.size(p));
+                                                Def def = new Def(p.toString(), buffer);
+                                                String[] groupNames = switch (def.type) {
+                                                    case 0x42 -> new String[]{"Moving",
+                                                            "Mouse-Over",
+                                                            "Standing",
+                                                            "Getting-Hit",
+                                                            "Defend",
+                                                            "Death",
+                                                            "Unused-Death",
+                                                            "Turn-Left",
+                                                            "Turn-Right",
+                                                            "Turn-Left",
+                                                            "Turn-Right",
+                                                            "Attack-Up",
+                                                            "Attack-Straight",
+                                                            "Attack-Down",
+                                                            "Shoot-Up",
+                                                            "Shoot-Straight",
+                                                            "Shoot-Down",
+                                                            "2-Hex-Attack-Up",
+                                                            "2-Hex-Attack-Straight",
+                                                            "2-Hex-Attack-Down",
+                                                            "Start-Moving",
+                                                            "Stop-Moving",
+                                                    };
+                                                    case 0x44 -> new String[]{
+                                                            "Up",
+                                                            "Up-Right",
+                                                            "Right",
+                                                            "Down-Right",
+                                                            "Down",
+                                                            "Move-Up",
+                                                            "Move-Up-Right",
+                                                            "Move-Right",
+                                                            "Move-Down-Right",
+                                                            "Move-Down",
+                                                    };
+                                                    case 0x49 -> new String[]{
+                                                            "Standing",
+                                                            "Shuffle",
+                                                            "Failure",
+                                                            "Victory",
+                                                            "Cast-Spell",
+                                                    };
+                                                    default -> new String[]{};
+                                                };
+
+                                                Map<Image, List<Def.Frame>> imageToFrames = new LinkedHashMap<>();
+                                                Map<Def.Frame, Image> imageMap = ImgFilesUtils.loadDef(def);
+                                                for (Map.Entry<Def.Frame, Image> entry : imageMap.entrySet()) {
+                                                    imageToFrames.computeIfAbsent(entry.getValue(), k -> new ArrayList<>()).add(entry.getKey());
+                                                }
+
+                                                for (Map.Entry<Image, List<Def.Frame>> entry : imageToFrames.entrySet()) {
+                                                    Image image = entry.getKey();
+                                                    List<Def.Frame> frames = entry.getValue();
+
+                                                    Def.Frame mainFrame = frames.get(0);
+                                                    String extra = "";
+                                                    if (frames.size() > 1) {
+                                                        StringBuilder extraBuilder = new StringBuilder();
+                                                        for (int i = 1; i < frames.size(); i++) {
+                                                            Def.Frame frame = frames.get(i);
+                                                            extraBuilder.append("_")
+                                                                    .append(frame.group.index)
+                                                                    .append(".")
+                                                                    .append(frame.index);
+                                                        }
+                                                        extra = extraBuilder.toString();
+                                                    }
+                                                    Def.Group group = mainFrame.group;
+
+                                                    String groupName = groupNames.length > group.index ? (groupNames[group.index] + "_") : "";
+                                                    String fileName = String.format("[G_%03d_%s%03d%s] %s.png", group.index, groupName, mainFrame.index, extra, mainFrame.name);
+
+                                                    try (OutputStream out = Files.newOutputStream(path.resolve(fileName))){
+                                                        ImageInfo header = new ImageInfo((int)image.getWidth(), (int)image.getHeight(), 8, false, false, true);
+                                                        PngWriter pngWriter = new PngWriter(out, header);
+                                                        PngChunkPLTE plteChunk = pngWriter.getMetadata().createPLTEChunk();
+                                                        plteChunk.setNentries(256);
+                                                        Map<Integer, Byte> colors = new HashMap<>();
+                                                        for (int i = 0; i < 256; i++) {
+                                                            int c = def.palette[i];
+                                                            int r = (c >>> 16) & 0xff;
+                                                            int g = (c >>> 8) & 0xff;
+                                                            int b = c & 0xff;
+                                                            plteChunk.setEntry(i, r, g, b);
+                                                            colors.put(c, (byte)i);
+                                                        }
+
+                                                        for (int y = 0; y < image.getHeight(); y++) {
+                                                            ImageLineByte line = new ImageLineByte(header);
+                                                            for (int x = 0; x < image.getWidth(); x++) {
+                                                                int color = image.getPixelReader().getArgb(x, y);
+                                                                line.getScanline()[x] = color >>> 24 == 0 ? 0 : colors.get(color);
+                                                            }
+                                                            pngWriter.writeRow(line);
+                                                        }
+                                                        pngWriter.end();
+                                                    }
+                                                }
+
+
+                                            } catch (Exception ex) {
+                                                ex.printStackTrace();
+                                                return;
+                                            }
+                                        }
+
+                                        getHostServices().showDocument(path.toString());
                                     }
                                 }
                             }
@@ -916,7 +1078,7 @@ public class DiffUi extends Application {
             w2.filter(p -> !ignoreRemote.matcher(p.toAbsolutePath().normalize().toString()).matches()).forEach(l -> remotePaths.add(remotePath.relativize(l)));
         }
 
-        scanLocal(localPaths);
+        scanLocal(localPaths, Pattern.compile("0w_.*"));
 
         Set<Path> allPaths = new TreeSet<>();
         allPaths.addAll(remotePaths);
@@ -924,14 +1086,14 @@ public class DiffUi extends Application {
         return allPaths;
     }
 
-    private void scanLocal(List<Path> localPaths) {
-        if (false) {
+    private void scanLocal(List<Path> localPaths, Pattern skipFrames) {
+        if (true) {
             return;
         }
         for (Path path : localPaths) {
             String name = path.getFileName().toString().toLowerCase();
             if (name.endsWith(".def")) {
-                ImgFilesUtils.validateDef(localPath.resolve(path));
+                ImgFilesUtils.validateDef(localPath.resolve(path), skipFrames);
             } else if (name.endsWith(".lod")) {
 
             }

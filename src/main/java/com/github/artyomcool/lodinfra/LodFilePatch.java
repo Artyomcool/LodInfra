@@ -1,5 +1,7 @@
 package com.github.artyomcool.lodinfra;
 
+import com.github.artyomcool.lodinfra.h3common.LodFile;
+
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -228,7 +230,7 @@ public class LodFilePatch {
     }
 
     private static int getLodHeaderSize() {
-        LodFile file = LodFile.createEmpty();
+        LodFile file = LodFile.createEmpty(null);
 
         int size = 0;
 

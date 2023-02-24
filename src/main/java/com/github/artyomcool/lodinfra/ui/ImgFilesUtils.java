@@ -1,6 +1,7 @@
 package com.github.artyomcool.lodinfra.ui;
 
-import com.github.artyomcool.lodinfra.LodFile;
+import com.github.artyomcool.lodinfra.h3common.Def;
+import com.github.artyomcool.lodinfra.h3common.LodFile;
 import javafx.scene.image.Image;
 import javafx.scene.image.WritableImage;
 
@@ -14,8 +15,7 @@ import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.*;
-import java.util.zip.DataFormatException;
-import java.util.zip.Inflater;
+import java.util.regex.Pattern;
 
 public class ImgFilesUtils {
 
@@ -151,75 +151,31 @@ public class ImgFilesUtils {
         }
     }
 
-    static List<Image> loadDef(Path file) {
-        return processFile(file, Collections.emptyList(), buffer -> {
-            Map<String, Image> deduplication = new HashMap<>();
-            List<Image> result = new ArrayList<>();
+    static Map<Def.Frame, Image> loadDef(Path file) {
+        return processFile(
+                file,
+                Collections.emptyMap(),
+                buffer -> loadDef(new Def(file.toString(), buffer))
+        );
+    }
 
-            int type = buffer.getInt();
-            int fullWidth = buffer.getInt();
-            int fullHeight = buffer.getInt();
+    static Map<Def.Frame, Image> loadDef(Def def) {
+        Map<String, Image> deduplication = new HashMap<>();
+        Map<Def.Frame, Image> result = new LinkedHashMap<>();
 
-            int groupCount = buffer.getInt();
-            int[] palette = new int[256];
-            for (int i = 0; i < palette.length; i++) {
-                palette[i] = 0xff000000 | (buffer.get() & 0xff) << 16 | (buffer.get() & 0xff) << 8 | (buffer.get() & 0xff);
+        for (Def.Group group : def.groups) {
+            for (Def.Frame frame : group.frames) {
+                String key = frame.name.toLowerCase();
+                Image image = deduplication.get(key);
+                if (image == null) {
+                    image = decodeDefFrame(def.buffer, def.palette, frame.offset);
+                    deduplication.put(key, image);
+                }
+                result.put(frame, image);
             }
-        /*
-        palette[0] = 0xFF00FFFF;
-        palette[1] = 0xFFFF80FF;
-        palette[4] = 0xFFFF00FF;
-        palette[5] = 0xFFFFFF00;
-        palette[6] = 0xFF8000FF;
-        palette[7] = 0xFF00FF00;
-         */
+        }
 
-            byte[] name = new byte[13];
-            String[] names;
-            int[] offsets;
-
-            int position = buffer.position();
-            for (int i = 0; i < groupCount; i++) {
-                buffer.position(position);
-                int groupType = buffer.getInt();
-                int framesCount = buffer.getInt();
-                buffer.getInt();
-                buffer.getInt();
-
-                names = new String[framesCount];
-                for (int j = 0; j < framesCount; j++) {
-                    buffer.get(name);
-                    try {
-                        int q = 0;
-                        while (name[q] != 0) {
-                            q++;
-                        }
-                        names[j] = new String(name, 0, q);
-                    } catch (IndexOutOfBoundsException e) {
-                        throw new RuntimeException("Strange def name " + new String(name), e);
-                    }
-                }
-
-                offsets = new int[framesCount];
-                for (int j = 0; j < framesCount; j++) {
-                    offsets[j] = buffer.getInt();
-                }
-
-                position = buffer.position();
-
-                for (int p = 0; p < framesCount; p++) {
-                    String n = names[p];
-                    Image image = deduplication.get(n);
-                    if (image == null) {
-                        image = decode(buffer, palette, offsets[p]);
-                        deduplication.put(n, image);
-                    }
-                    result.add(image);
-                }
-            }
-
-            return result;
-        });
+        return result;
     }
 
     private static <T> T processFile(Path file, T def, ImgFilesUtils.Processor<T> processor) {
@@ -230,31 +186,11 @@ public class ImgFilesUtils {
                 try (FileChannel channel = FileChannel.open(p)) {
                     MappedByteBuffer buffer = channel.map(FileChannel.MapMode.READ_ONLY, 0, channel.size());
                     buffer.order(ByteOrder.LITTLE_ENDIAN);
-                    LodFile lod = LodFile.parse(buffer);
+                    LodFile lod = LodFile.parse(file, buffer);
                     String name = s.substring(s.indexOf("?") + 1);
                     for (LodFile.SubFileMeta subFile : lod.subFiles) {
                         if (name.equals(subFile.nameAsString)) {
-                            if (subFile.compressedSize != 0) {
-                                ByteBuffer uncompressed = ByteBuffer.allocate(subFile.uncompressedSize);
-                                Inflater inflater = new Inflater();
-                                inflater.setInput(
-                                        lod.originalData.slice(subFile.globalOffsetInFile, subFile.compressedSize)
-                                );
-                                try {
-                                    inflater.inflate(uncompressed);
-                                } catch (DataFormatException ex) {
-                                    throw new IOException(ex);
-                                }
-                                inflater.end();
-
-                                uncompressed.rewind();
-                                uncompressed.order(ByteOrder.LITTLE_ENDIAN);
-                                return processor.process(uncompressed);
-                            } else {
-                                return processor.process(
-                                        lod.originalData.slice(subFile.globalOffsetInFile, subFile.uncompressedSize)
-                                );
-                            }
+                            return processor.process(subFile.asByteBuffer());
                         }
                     }
                     return def;
@@ -301,7 +237,7 @@ public class ImgFilesUtils {
         });
     }
 
-    private static Image decode(ByteBuffer buffer, int[] palette, int offset) {
+    public static Image decodeDefFrame(ByteBuffer buffer, int[] palette, int offset) {
         buffer.position(offset);
         int size = buffer.getInt();
         int compression = buffer.getInt();
@@ -406,51 +342,22 @@ public class ImgFilesUtils {
         return image;
     }
 
-    public static void validateDef(Path path) {
+    public static void validateDef(Path path, Pattern skipFrames) {
         processFile(path, null, buffer -> {
-            int type = buffer.getInt();
-            int fullWidth = buffer.getInt();
-            int fullHeight = buffer.getInt();
-
-            int groupCount = buffer.getInt();
-            int[] palette = new int[256];
-            for (int i = 0; i < palette.length; i++) {
-                palette[i] = 0xff000000 | (buffer.get() & 0xff) << 16 | (buffer.get() & 0xff) << 8 | (buffer.get() & 0xff);
-            }
-
-            byte[] name = new byte[13];
-            String[] names;
-
             Map<String, String> remap = new LinkedHashMap<>();
-            Map<ByteBuffer, String> shouldBeNamed = new LinkedHashMap<>();
 
-            int position = buffer.position();
-            for (int i = 0; i < groupCount; i++) {
-                buffer.position(position);
-
-                int groupType = buffer.getInt();
-                int framesCount = buffer.getInt();
-                buffer.getInt();
-                buffer.getInt();
-
-                names = new String[framesCount];
-                for (int j = 0; j < framesCount; j++) {
-                    int namePos = buffer.position();
-                    buffer.get(name);
-                    try {
-                        int q = 0;
-                        while (name[q] != 0) {
-                            q++;
-                        }
-                        names[j] = new String(name, 0, q);
-                    } catch (IndexOutOfBoundsException e) {
-                        names[j] = new String(name);
-                        //System.err.println(path + " has wrong name at " + j + "/" + framesCount + " " + new String(name) + " " + LocalDate.ofInstant(Files.getLastModifiedTime(path).toInstant(), ZoneId.systemDefault()));
+            Def def = new Def(path.toString(), buffer);
+            for (int i = 0; i < def.groups.size(); i++) {
+                Def.Group group = def.groups.get(i);
+                for (int j = 0; j < group.frames.size(); j++) {
+                    Def.Frame frame = group.frames.get(j);
+                    String old = frame.name;
+                    if (skipFrames.matcher(old).matches()) {
+                        continue;
                     }
 
                     int groupIndex = i;
                     int frameIndex = j;
-                    String old = names[j];
                     String newName = remap.computeIfAbsent(old, k -> {
                         String defName = path.getFileName().toString();
                         defName = defName.substring(0, defName.indexOf("."));
@@ -460,28 +367,9 @@ public class ImgFilesUtils {
                         return defName + (char)((int)'A' + groupIndex) + String.format("%03d", frameIndex);
                     });
 
-                    if (!old.startsWith("0w_") && !old.equals(newName)) {
-                        names[j] = newName;
-                        Arrays.fill(name, (byte)0);
-                        newName.getBytes(0, newName.length(), name, 0);
-                        //buffer.position(namePos).put(name);
-                        System.out.println("Def has wrong naming: " + path + "; groupIndex: " + groupIndex + "; frameIndex: " + frameIndex + "; should be named: " + newName + "; current name:" + old);
+                    if (!old.equals(newName)) {
+                        System.err.println("Def has wrong naming: " + path + "; groupIndex: " + groupIndex + "; frameIndex: " + frameIndex + "; should be named: " + newName + "; current name:" + old);
                     }
-                }
-
-                int[] offsets = new int[framesCount];
-                for (int j = 0; j < framesCount; j++) {
-                    offsets[j] = buffer.getInt();   //offset
-                }
-
-                position = buffer.position();
-
-                for (int p = 0; p < framesCount; p++) {
-                    //String n = names[p];
-                    //String was = shouldBeNamed.put(buffer.slice(offsets[p], buffer.getInt(offsets[p])), n);
-                    //if (was != null && !was.equals(n)) {
-                    //    System.out.println("Exactly same data with different names: " + path + " " + n + " (duplicates " + was + ")");
-                    //}
                 }
             }
 
