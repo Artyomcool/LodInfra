@@ -115,6 +115,7 @@ jlink {
     mergedModule {
         requires 'java.desktop'
         requires 'jdk.charsets'
+        requires 'java.logging'
     }
 
 
