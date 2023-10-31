@@ -2,10 +2,25 @@ package com.github.artyomcool.lodinfra.h3common;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
 
 public class Def {
+
+    public static final int[] SPEC_COLORS = new int[] {
+            0xFF00FFFF,
+            0xFFFF96FF,
+            0xFF00BFBF,
+            0xFFE343C0,
+            0xFFFF00FF,
+            0xFFFFFF00,
+            0xFFB400FF,
+            0xFF00FF00,
+    };
 
     public final ByteBuffer buffer;
 
@@ -16,8 +31,14 @@ public class Def {
     public final List<Group> groups;
     public final int[] palette;
 
+    public boolean wasChanged = false;
+
     public Def(String path, ByteBuffer buffer) {
-        this.buffer = buffer = buffer.asReadOnlyBuffer().order(ByteOrder.LITTLE_ENDIAN);
+        this(path, buffer, (a, g, f) -> null);
+    }
+
+    public Def(String path, ByteBuffer buffer, NameHandler namesHandler) {
+        this.buffer = buffer = buffer.duplicate().order(ByteOrder.LITTLE_ENDIAN);
 
         type = buffer.getInt();
         fullWidth = buffer.getInt();
@@ -45,14 +66,16 @@ public class Def {
         int[] offsets;
 
         for (int i = 0; i < groupCount; i++) {
-            int groupType = buffer.getInt();
+            int groupIndex = buffer.getInt();
             int framesCount = buffer.getInt();
             buffer.getInt();
             buffer.getInt();
 
             names = new String[framesCount];
             for (int j = 0; j < framesCount; j++) {
+                int startPos = buffer.position();
                 buffer.get(name);
+                boolean isStrange = false;
                 try {
                     int q = 0;
                     while (name[q] != 0) {
@@ -60,8 +83,17 @@ public class Def {
                     }
                     names[j] = new String(name, 0, q);
                 } catch (IndexOutOfBoundsException e) {
+                    isStrange = true;
                     names[j] = new String(name);
-                    System.err.println("Strange def name: " + new String(name) + "; def path: " + path + "; group index: " + i + "; frame index: " + i);
+                }
+                String betterName = namesHandler.handleFrameName(names[j], groupIndex, j);
+                if (betterName != null && (!betterName.equals(names[j]) || isStrange)) {
+                    names[j] = betterName;
+                    byte[] bytes = Arrays.copyOf(betterName.getBytes(StandardCharsets.UTF_8), 13);
+                    for (byte b : bytes) {
+                        buffer.put(startPos++, b);
+                    }
+                    this.wasChanged = true;
                 }
             }
 
@@ -70,14 +102,122 @@ public class Def {
                 offsets[j] = buffer.getInt();
             }
 
-            Group group = new Group(i);
+            Group group = new Group(groupIndex);
             for (int j = 0; j < framesCount; j++) {
-                Frame frame = new Frame(group, offsets[j], names[j], j);
+                Frame frame = new Frame(group, offsets[j], names[j], j, buffer.getInt(offsets[j] + 4));
                 group.frames.add(frame);
             }
 
             groups.add(group);
         }
+    }
+
+    public int[][] decode(Frame frame) {
+        buffer.position(frame.offset);
+
+        int size = buffer.getInt();
+        int compression = buffer.getInt();
+        int fullWidth = buffer.getInt();
+        int fullHeight = buffer.getInt();
+
+        int width = buffer.getInt();
+        int height = buffer.getInt();
+        int x = buffer.getInt();
+        int y = buffer.getInt();
+
+        int start = buffer.position();
+
+        int xx = x;
+        int yy = y;
+
+        int[][] image = new int[fullHeight][fullWidth];
+        for (int[] row : image) {
+            Arrays.fill(row, SPEC_COLORS[0]);
+        }
+
+        switch (compression) {
+            case 0 -> {
+                for (int i = 0; i < height; i++) {
+                    for (int j = 0; j < width; j++) {
+                        image[y + i][x + j] = palette[buffer.get() & 0xff];
+                    }
+                }
+            }
+            case 1 -> {
+                int[] offsets = new int[height];
+                for (int i = 0; i < offsets.length; i++) {
+                    offsets[i] = buffer.getInt() + start;
+                }
+                for (int i : offsets) {
+                    buffer.position(i);
+
+                    for (int w = 0; w < width; ) {
+                        int index = (buffer.get() & 0xff);
+                        int count = (buffer.get() & 0xff) + 1;
+                        for (int j = 0; j < count; j++) {
+                            image[yy][xx] = index == 0xff ? palette[buffer.get() & 0xff] : SPEC_COLORS[index];
+                            xx++;
+                        }
+                        w += count;
+                    }
+                    xx = x;
+                    yy++;
+                }
+            }
+            case 2 -> {
+                int[] offsets = new int[height];
+                for (int i = 0; i < offsets.length; i++) {
+                    offsets[i] = (buffer.getShort() & 0xffff) + start;
+                }
+                for (int i : offsets) {
+                    buffer.position(i);
+
+                    for (int w = 0; w < width; ) {
+                        int b = buffer.get() & 0xff;
+                        int index = b >> 5;
+                        int count = (b & 0x1f) + 1;
+                        for (int j = 0; j < count; j++) {
+                            image[yy][xx] = index == 0x7 ? palette[buffer.get() & 0xff] : SPEC_COLORS[index];
+                            xx++;
+                            if (xx >= x + width) {
+                                yy++;
+                                xx = x;
+                            }
+                        }
+                        w += count;
+                    }
+                }
+            }
+            case 3 -> {
+                int[] offsets = new int[width * height / 32];
+                for (int i = 0; i < offsets.length; i++) {
+                    offsets[i] = (buffer.getShort() & 0xffff) + start;
+                }
+                for (int i : offsets) {
+                    buffer.position(i);
+
+                    int left = 32;
+                    while (left > 0) {
+                        int b = buffer.get() & 0xff;
+                        int index = b >> 5;
+                        int count = (b & 0x1f) + 1;
+
+                        for (int j = 0; j < count; j++) {
+                            image[yy][xx] = index == 0x7 ? palette[buffer.get() & 0xff] : SPEC_COLORS[index];
+                            xx++;
+                            if (xx >= x + width) {
+                                yy++;
+                                xx = x;
+                            }
+                        }
+
+                        left -= count;
+                    }
+                }
+            }
+        }
+
+        return image;
     }
 
     public static class Group {
@@ -94,13 +234,19 @@ public class Def {
         public final int offset;
         public final String name;
         public final int index;
+        public final int compression;
 
-        public Frame(Group group, int offset, String name, int index) {
+        public Frame(Group group, int offset, String name, int index, int compression) {
             this.group = group;
             this.offset = offset;
             this.name = name;
             this.index = index;
+            this.compression = compression;
         }
+    }
+
+    public interface NameHandler {
+        String handleFrameName(String name, int group, int frame);
     }
 
 }

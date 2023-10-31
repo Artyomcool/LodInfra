@@ -4,6 +4,7 @@ import ar.com.hjg.pngj.ImageInfo;
 import ar.com.hjg.pngj.ImageLineByte;
 import ar.com.hjg.pngj.PngWriter;
 import ar.com.hjg.pngj.chunks.PngChunkPLTE;
+import com.github.artyomcool.lodinfra.h3common.D32;
 import com.github.artyomcool.lodinfra.h3common.Def;
 import com.github.artyomcool.lodinfra.h3common.LodFile;
 import com.jfoenix.controls.JFXTreeTableView;
@@ -15,12 +16,17 @@ import javafx.beans.value.ChangeListener;
 import javafx.beans.value.ObservableValue;
 import javafx.collections.ObservableList;
 import javafx.event.Event;
+import javafx.event.EventHandler;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.image.Image;
+import javafx.scene.image.PixelFormat;
+import javafx.scene.image.WritableImage;
+import javafx.scene.image.WritablePixelFormat;
+import javafx.scene.input.ContextMenuEvent;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.SVGPath;
@@ -31,11 +37,10 @@ import javafx.util.Callback;
 import org.controlsfx.control.SegmentedButton;
 
 import java.io.*;
-import java.nio.MappedByteBuffer;
-import java.nio.channels.FileChannel;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
+import java.nio.IntBuffer;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.*;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
 import java.text.SimpleDateFormat;
 import java.time.Instant;
@@ -46,6 +51,7 @@ import java.time.format.DateTimeFormatterBuilder;
 import java.time.temporal.ChronoField;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.prefs.Preferences;
@@ -67,6 +73,7 @@ public class DiffUi extends Application {
     private Stage primaryStage;
     private PreviewNode previewLocal;
     private PreviewNode previewRemote;
+    private PreviewNode previewDiff;
     private TreeItem<Item> rootItem;
 
     public DiffUi(Path localPath, Path remotePath, Path cfg, Path logs, String nick) {
@@ -182,7 +189,13 @@ public class DiffUi extends Application {
             previewLocal.setAlignment(Pos.CENTER);
             previewRemote = preview();
             previewRemote.setAlignment(Pos.CENTER);
-            VBox previews = new VBox(withLabel(previewLocal, "Preview A"), withLabel(previewRemote, "Perview B"));
+            previewDiff = preview();
+            previewRemote.setAlignment(Pos.CENTER);
+            VBox previews = new VBox(
+                    withLabel(previewLocal, "Preview A"),
+                    withLabel(previewRemote, "Perview B"),
+                    withLabel(previewDiff, "Perview Diff")
+                    );
             ScrollPane pane = new ScrollPane(previews);
             pane.setMinWidth(350);
             pane.setPrefWidth(350);
@@ -249,9 +262,11 @@ public class DiffUi extends Application {
         ToggleButton observe = new ToggleButton("Observe");
         ToggleButton push = new ToggleButton("Push");
         push.setGraphic(uploadIcon());
+        ToggleButton inProgress = new ToggleButton("In Progress");
         SegmentedButton modes = new SegmentedButton(
                 fetch,
                 observe,
+                inProgress,
                 push
         );
         modes.getToggleGroup().selectedToggleProperty().addListener((obsVal, oldVal, newVal) -> {
@@ -368,9 +383,7 @@ public class DiffUi extends Application {
             final JFXTreeTableView<Item> pushList = createListComponent(false, true, pushActions);
 
             final Button pushButton = new Button("Push selected", uploadIcon());
-
             {
-
                 pushButton.setOnAction(a -> {
                     StringBuilder files = new StringBuilder();
                     for (Map.Entry<Item, ItemAction> entry : pushActions.entrySet()) {
@@ -438,6 +451,52 @@ public class DiffUi extends Application {
                 });
             }
 
+            final Button revertButton = new Button("REVERT!!!");
+            {
+                revertButton.setOnAction(a -> {
+                    Alert alert = new Alert(Alert.AlertType.WARNING, "Revert all selected files to remote version?", ButtonType.NO, ButtonType.YES);
+                    alert.showAndWait();
+
+                    if (alert.getResult() != ButtonType.YES) {
+                        return;
+                    }
+                    for (Map.Entry<Item, ItemAction> entry : pushActions.entrySet()) {
+                        if (entry.getValue() != ItemAction.LOCAL_TO_REMOTE) {
+                            continue;
+                        }
+
+                        Item item = entry.getKey();
+                        if (item.isSynthetic) {
+                            continue;
+                        }
+
+                        try {
+                            if (item.remote.lastModified == null && item.local.isFile) {
+                                Files.delete(item.local.path);
+                            } else {
+                                Files.copy(
+                                        item.remote.path,
+                                        item.local.path,
+                                        StandardCopyOption.REPLACE_EXISTING,
+                                        StandardCopyOption.COPY_ATTRIBUTES
+                                );
+                            }
+                        } catch (IOException exception) {
+                            exception.printStackTrace();
+                        }
+                    }
+
+                    pushActions.clear();
+                    try {
+                        rootItem = loadTree();
+                    } catch (IOException exception) {
+                        throw new UncheckedIOException(exception);
+                    }
+
+                    updateRoot();
+                });
+            }
+
             private void updateRoot() {
                 cachedGlobalRoot = rootItem;
                 itemTreeItem = DiffUi.this.filterForPush();
@@ -451,7 +510,7 @@ public class DiffUi extends Application {
                         updateRoot();
                     }
                     leftPanel.getChildren().clear();
-                    rightPanel.getChildren().setAll(pushButton);
+                    rightPanel.getChildren().setAll(revertButton, pushButton);
                     listWrapper.getChildren().setAll(pushList);
                 }
             }
@@ -469,6 +528,28 @@ public class DiffUi extends Application {
                     if (cachedGlobalRoot != rootItem) {
                         cachedGlobalRoot = rootItem;
                         itemTreeItem = DiffUi.this.filterForObserve();
+                        observeList.setRoot(itemTreeItem);
+                    }
+                    leftPanel.getChildren().clear();
+                    rightPanel.getChildren().clear();
+                    listWrapper.getChildren().setAll(observeList);
+                }
+            }
+        });
+        inProgress.selectedProperty().addListener(new ChangeListener<>() {
+
+            private TreeItem<Item> cachedGlobalRoot;
+            private TreeItem<Item> itemTreeItem;
+            final Map<Item, ItemAction> observeActions = new HashMap<>();
+            final JFXTreeTableView<Item> observeList = createListComponent(true, false, observeActions);
+
+            @Override
+            public void changed(ObservableValue<? extends Boolean> observable, Boolean oldValue, Boolean newValue) {
+                if (newValue) {
+                    if (cachedGlobalRoot != rootItem) {
+                        cachedGlobalRoot = rootItem;
+                        itemTreeItem = DiffUi.this.filterForInProgress();
+
                         observeList.setRoot(itemTreeItem);
                     }
                     leftPanel.getChildren().clear();
@@ -672,6 +753,38 @@ public class DiffUi extends Application {
         sizeB.setCellValueFactory(param -> new SimpleObjectProperty<>(param.getValue().getValue().remote.size));
 
         list.setRowFactory(r -> new TreeTableRow<>() {
+            {
+                MenuItem validate = new MenuItem("Validate");
+                Pattern skipFrames = Pattern.compile("0w_.*");
+                validate.setOnAction(event -> applyToLeafs(getTreeItem() == null ? rootItem : getTreeItem(), item -> {
+                    String name = item.local.path.getFileName().toString().toLowerCase();
+                    if (name.endsWith(".def")) {
+                        //ImgFilesUtils.validateDefNames(item.local.path, skipFrames);
+                        ImgFilesUtils.validateDefColors(item.local.path);
+                    } else if (name.endsWith(".d32")) {
+                        ImgFilesUtils.validateD32Colors(item.local.path);
+                    } else if (name.endsWith(".p32")) {
+                        ImgFilesUtils.validateP32Colors(item.local.path);
+                    }
+                }));
+                MenuItem fixDefNaming = new MenuItem("Fix def naming");
+                fixDefNaming.setOnAction(event -> applyToLeafs(getTreeItem(), item -> {
+                    String name = item.local.path.getFileName().toString().toLowerCase();
+                    if (name.endsWith(".def")) {
+                        ImgFilesUtils.fixDefNames(item.local.path, skipFrames);
+                    }
+                }));
+                MenuItem fixColors = new MenuItem("Fix d32/p32 alpha colors");
+                fixColors.setOnAction(event -> applyToLeafs(getTreeItem() == null ? rootItem : getTreeItem(), item -> {
+                    String name = item.local.path.getFileName().toString().toLowerCase();
+                    if (name.endsWith(".d32")) {
+                        ImgFilesUtils.fixD32Colors(item.local.path);
+                    } else if (name.endsWith(".p32")) {
+                        ImgFilesUtils.fixP32Colors(item.local.path);
+                    }
+                }));
+                setContextMenu(new ContextMenu(validate, fixDefNaming, fixColors));
+            }
 
             @Override
             protected void updateItem(Item item, boolean empty) {
@@ -681,228 +794,27 @@ public class DiffUi extends Application {
                         setOnMouseClicked(e -> {
                             if (e.getClickCount() == 2) {
                                 TreeItem<Item> treeItem = getTreeItem();
+                                String itemName = item.local.name.toLowerCase();
                                 if (treeItem.getChildren().isEmpty() && (item.local.isFile || item.remote.isFile)) {
-                                    String itemName = item.local.name.toLowerCase();
                                     if (itemName.endsWith(".lod")) {
-                                        TreeSet<String> allResources = new TreeSet<>();
-                                        Map<String, LodFile.SubFileMeta> localMapping = new HashMap<>();
-                                        Map<String, LodFile.SubFileMeta> remoteMapping = new HashMap<>();
-
-                                        try {
-                                            if (item.local.isFile) {
-                                                LodFile lod = LodFile.load(item.local.path);
-                                                for (LodFile.SubFileMeta subFile : lod.subFiles) {
-                                                    String name = subFile.nameAsString.toLowerCase();
-                                                    allResources.add(name);
-                                                    localMapping.put(name, subFile);
-                                                }
-                                            }
-                                            if (item.remote.isFile) {
-                                                LodFile lod = LodFile.load(item.remote.path);
-                                                for (LodFile.SubFileMeta subFile : lod.subFiles) {
-                                                    String name = subFile.nameAsString.toLowerCase();
-                                                    allResources.add(name);
-                                                    remoteMapping.put(name, subFile);
-                                                }
-                                            }
-
-                                            List<TreeItem<Item>> items = new ArrayList<>();
-                                            for (String res : allResources) {
-                                                LodFile.SubFileMeta localMeta = localMapping.get(res);
-                                                LodFile.SubFileMeta remoteMeta = remoteMapping.get(res);
-
-                                                String localName = localMeta == null
-                                                        ? remoteMeta.nameAsString
-                                                        : localMeta.nameAsString;
-
-                                                String remoteName = remoteMeta == null
-                                                        ? localMeta.nameAsString
-                                                        : remoteMeta.nameAsString;
-
-
-                                                FileInfo localFile = new FileInfo(
-                                                        item.local.path.resolveSibling(item.local.path.getFileName() + "?" + localName),
-                                                        localName,
-                                                        null,
-                                                        localMeta == null ? null : (long) localMeta.uncompressedSize,
-                                                        false,
-                                                        localMeta != null
-                                                );
-                                                FileInfo remoteFile = new FileInfo(
-                                                        item.remote.path.resolveSibling(item.remote.path.getFileName() + "?" + remoteName),
-                                                        remoteName,
-                                                        null,
-                                                        remoteMeta == null ? null : (long) remoteMeta.uncompressedSize,
-                                                        false,
-                                                        remoteMeta != null
-                                                );
-
-                                                items.add(new TreeItem<>(new Item(localFile, remoteFile, true)));
-                                            }
-                                            treeItem.getChildren().setAll(items);
-                                            treeItem.setExpanded(true);
-                                        } catch (IOException ex) {
-                                            ex.printStackTrace();
-                                        }
+                                        expandLod(item, treeItem);
+                                    } else if (itemName.endsWith(".d32")) {
+                                        unpackD32(item);
                                     } else if (itemName.endsWith(".def")) {
-                                        Path path = item.local.path.resolveSibling("[" + item.local.path.getFileName() + "]");
-                                        ButtonType justOpen = new ButtonType("Just open");
-                                        ButtonType rewrite = new ButtonType("Rewrite");
-                                        ButtonType unpack = new ButtonType("Unpack");
-
-                                        Alert dialog;
-                                        if (Files.exists(path)) {
-                                            dialog = new Alert(
-                                                    Alert.AlertType.WARNING,
-                                                    "This def already unpacked. Rewrite?",
-                                                    justOpen,
-                                                    rewrite,
-                                                    ButtonType.CANCEL
-                                            );
-                                        } else {
-                                            dialog = new Alert(
-                                                    Alert.AlertType.CONFIRMATION,
-                                                    "Unpack this def?",
-                                                    unpack,
-                                                    ButtonType.CANCEL
-                                            );
-                                        }
-
-                                        Optional<ButtonType> shown = dialog.showAndWait();
-                                        if (shown.isEmpty()) {
-                                            return;
-                                        }
-                                        ButtonType buttonType = shown.get();
-                                        if (buttonType.getButtonData() == ButtonBar.ButtonData.CANCEL_CLOSE) {
-                                            return;
-                                        }
-
-                                        if (buttonType == unpack) {
-                                            try {
-                                                Files.createDirectory(path);
-                                            } catch (IOException ex) {
-                                                ex.printStackTrace();
-                                            }
-                                        }
-                                        if (buttonType == unpack || buttonType == rewrite) {
-                                            Path p = item.local.path;
-                                            try (FileChannel channel = FileChannel.open(p)) {
-                                                MappedByteBuffer buffer = channel.map(FileChannel.MapMode.READ_ONLY, 0, Files.size(p));
-                                                Def def = new Def(p.toString(), buffer);
-                                                String[] groupNames = switch (def.type) {
-                                                    case 0x42 -> new String[]{"Moving",
-                                                            "Mouse-Over",
-                                                            "Standing",
-                                                            "Getting-Hit",
-                                                            "Defend",
-                                                            "Death",
-                                                            "Unused-Death",
-                                                            "Turn-Left",
-                                                            "Turn-Right",
-                                                            "Turn-Left",
-                                                            "Turn-Right",
-                                                            "Attack-Up",
-                                                            "Attack-Straight",
-                                                            "Attack-Down",
-                                                            "Shoot-Up",
-                                                            "Shoot-Straight",
-                                                            "Shoot-Down",
-                                                            "2-Hex-Attack-Up",
-                                                            "2-Hex-Attack-Straight",
-                                                            "2-Hex-Attack-Down",
-                                                            "Start-Moving",
-                                                            "Stop-Moving",
-                                                    };
-                                                    case 0x44 -> new String[]{
-                                                            "Up",
-                                                            "Up-Right",
-                                                            "Right",
-                                                            "Down-Right",
-                                                            "Down",
-                                                            "Move-Up",
-                                                            "Move-Up-Right",
-                                                            "Move-Right",
-                                                            "Move-Down-Right",
-                                                            "Move-Down",
-                                                    };
-                                                    case 0x49 -> new String[]{
-                                                            "Standing",
-                                                            "Shuffle",
-                                                            "Failure",
-                                                            "Victory",
-                                                            "Cast-Spell",
-                                                    };
-                                                    default -> new String[]{};
-                                                };
-
-                                                Map<Image, List<Def.Frame>> imageToFrames = new LinkedHashMap<>();
-                                                Map<Def.Frame, Image> imageMap = ImgFilesUtils.loadDef(def);
-                                                for (Map.Entry<Def.Frame, Image> entry : imageMap.entrySet()) {
-                                                    imageToFrames.computeIfAbsent(entry.getValue(), k -> new ArrayList<>()).add(entry.getKey());
-                                                }
-
-                                                for (Map.Entry<Image, List<Def.Frame>> entry : imageToFrames.entrySet()) {
-                                                    Image image = entry.getKey();
-                                                    List<Def.Frame> frames = entry.getValue();
-
-                                                    Def.Frame mainFrame = frames.get(0);
-                                                    String extra = "";
-                                                    if (frames.size() > 1) {
-                                                        StringBuilder extraBuilder = new StringBuilder();
-                                                        for (int i = 1; i < frames.size(); i++) {
-                                                            Def.Frame frame = frames.get(i);
-                                                            extraBuilder.append("_")
-                                                                    .append(frame.group.index)
-                                                                    .append(".")
-                                                                    .append(frame.index);
-                                                        }
-                                                        extra = extraBuilder.toString();
-                                                    }
-                                                    Def.Group group = mainFrame.group;
-
-                                                    String groupName = groupNames.length > group.index ? (groupNames[group.index] + "_") : "";
-                                                    String fileName = String.format("[G_%03d_%s%03d%s] %s.png", group.index, groupName, mainFrame.index, extra, mainFrame.name);
-
-                                                    try (OutputStream out = Files.newOutputStream(path.resolve(fileName))){
-                                                        ImageInfo header = new ImageInfo((int)image.getWidth(), (int)image.getHeight(), 8, false, false, true);
-                                                        PngWriter pngWriter = new PngWriter(out, header);
-                                                        PngChunkPLTE plteChunk = pngWriter.getMetadata().createPLTEChunk();
-                                                        plteChunk.setNentries(256);
-                                                        Map<Integer, Byte> colors = new HashMap<>();
-                                                        for (int i = 0; i < 256; i++) {
-                                                            int c = def.palette[i];
-                                                            int r = (c >>> 16) & 0xff;
-                                                            int g = (c >>> 8) & 0xff;
-                                                            int b = c & 0xff;
-                                                            plteChunk.setEntry(i, r, g, b);
-                                                            colors.put(c, (byte)i);
-                                                        }
-
-                                                        for (int y = 0; y < image.getHeight(); y++) {
-                                                            ImageLineByte line = new ImageLineByte(header);
-                                                            for (int x = 0; x < image.getWidth(); x++) {
-                                                                int color = image.getPixelReader().getArgb(x, y);
-                                                                line.getScanline()[x] = color >>> 24 == 0 ? 0 : colors.get(color);
-                                                            }
-                                                            pngWriter.writeRow(line);
-                                                        }
-                                                        pngWriter.end();
-                                                    }
-                                                }
-
-
-                                            } catch (Exception ex) {
-                                                ex.printStackTrace();
-                                                return;
-                                            }
-                                        }
-
-                                        getHostServices().showDocument(path.toString());
+                                        unpackDef(item);
                                     }
                                 }
                             }
                         });
-                    } else if (item.local.isDirectory && item.remote.isDirectory) {
+                    } else {
+                        String itemName = item.local.name.toLowerCase();
+                        if (itemName.startsWith("[") && itemName.endsWith("]")) {
+                            setOnMouseClicked(e -> {
+                                if (e.getClickCount() == 2) {
+                                    packDef(item);
+                                }
+                            });
+                        }
                     }
                 }
             }
@@ -931,6 +843,564 @@ public class DiffUi extends Application {
         return list;
     }
 
+    private void packDef(Item item) {
+        try {
+            Path path = item.local.path;
+            String name = path.getFileName().toString();
+            Path output = path.resolveSibling(name.substring(1, name.length() - 1));
+            Properties properties = new Properties();
+            try (Reader reader = Files.newBufferedReader(path.resolve("def.cfg"), StandardCharsets.UTF_8)) {
+                properties.load(reader);
+            }
+
+            String format = properties.getProperty("a.format"); // d32
+            if (!format.equals("d32")) throw new RuntimeException(format + " is not supported yet");
+            int width = Integer.parseInt(properties.getProperty("a.width"));
+            int height = Integer.parseInt(properties.getProperty("a.height"));
+            int groupsCount = Integer.parseInt(properties.getProperty("a.groups"));
+
+            List<D32.GroupDescriptor> groups = new ArrayList<>(groupsCount);
+            Map<String, int[][]> loadedFrames = new HashMap<>();
+
+            for (int i = 0; i < groupsCount; i++) {
+                int framesCount = Integer.parseInt(properties.getProperty("group." + i + ".frames"));
+                int groupIndex = Integer.parseInt(properties.getProperty("group." + i + ".index"));
+                D32.GroupDescriptor group = new D32.GroupDescriptor(groupIndex);
+                for (int j = 0; j < framesCount; j++) {
+                    D32.FrameDescriptor frame = new D32.FrameDescriptor(
+                            properties.getProperty("group." + i + ".frame." + j + ".name"),
+                            Integer.parseInt(properties.getProperty("group." + i + ".frame." + j + ".type"))
+                    );
+                    String file = properties.getProperty("group." + i + ".frame." + j + ".file");
+                    loadedFrames.computeIfAbsent(frame.name, k -> ImgFilesUtils.loadD32Frame(path.resolve(file)));
+
+                    group.frameDescriptors.add(frame);
+                }
+                groups.add(group);
+            }
+
+            D32.pack(output, groups, loadedFrames);
+
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    private Path askForUnpack(Item item) throws IOException {
+        Path path = getUnpackedPath(item);
+        ButtonType justOpen = new ButtonType("Just open");
+        ButtonType rewrite = new ButtonType("Rewrite");
+        ButtonType unpack = new ButtonType("Unpack");
+
+        Alert dialog;
+        if (Files.exists(path)) {
+            dialog = new Alert(
+                    Alert.AlertType.WARNING,
+                    "This d32 already unpacked. Rewrite?",
+                    justOpen,
+                    rewrite,
+                    ButtonType.CANCEL
+            );
+        } else {
+            dialog = new Alert(
+                    Alert.AlertType.CONFIRMATION,
+                    "Unpack this d32?",
+                    unpack,
+                    ButtonType.CANCEL
+            );
+        }
+
+        Optional<ButtonType> shown = dialog.showAndWait();
+        if (shown.isEmpty()) {
+            return null;
+        }
+        ButtonType buttonType = shown.get();
+        if (buttonType.getButtonData() == ButtonBar.ButtonData.CANCEL_CLOSE) {
+            return null;
+        }
+        if (buttonType == rewrite) {
+            Files.walkFileTree(path, new SimpleFileVisitor<>() {
+                @Override
+                public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                    Files.delete(file);
+                    return FileVisitResult.CONTINUE;
+                }
+
+                @Override
+                public FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
+                    return this.visitFile(dir, null);
+                }
+            });
+        }
+        if (buttonType == unpack || buttonType == rewrite) {
+            try {
+                Files.createDirectory(path);
+            } catch (IOException ex) {
+                ex.printStackTrace();
+                return null;
+            }
+        }
+        return buttonType == unpack || buttonType == rewrite ? path : null;
+    }
+
+    private static Path getUnpackedPath(Item item) {
+        return item.local.path.resolveSibling("[" + item.local.path.getFileName() + "]");
+    }
+
+    private void unpackD32(Item item) {
+        Path path;
+        try {
+            path = askForUnpack(item);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+        if (path == null) {
+            getHostServices().showDocument(getUnpackedPath(item).toString());
+            return;
+        }
+
+        boolean isPng;
+        boolean useGroups;
+        {
+            ButtonType png = new ButtonType("PNG");
+            ButtonType bmp = new ButtonType("BMP");
+            Alert dialog = new Alert(
+                    Alert.AlertType.NONE,
+                    "Choose format",
+                    png,
+                    bmp
+            );
+
+            Optional<ButtonType> dialogResult = dialog.showAndWait();
+            if (dialogResult.isEmpty()) {
+                return;
+            }
+            isPng = dialogResult.get() == png;
+        }
+        {
+            Alert dialog = new Alert(
+                    Alert.AlertType.NONE,
+                    "Use groups in file names?",
+                    ButtonType.YES,
+                    ButtonType.NO
+            );
+
+            Optional<ButtonType> dialogResult = dialog.showAndWait();
+            if (dialogResult.isEmpty()) {
+                return;
+            }
+            useGroups = dialogResult.get() == ButtonType.YES;
+        }
+
+        Path p = item.local.path;
+        ImgFilesUtils.processFile(p, null, buffer -> {
+            D32 d32 = new D32(p.toString(), buffer);
+            String[] groupNames;
+            if (d32.groups.size() >= 22) {
+                groupNames = new String[]{
+                        "Moving",
+                        "Mouse-Over",
+                        "Standing",
+                        "Getting-Hit",
+                        "Defend",
+                        "Death",
+                        "Unused-Death",
+                        "Turn-Left",
+                        "Turn-Right",
+                        "Turn-Left",
+                        "Turn-Right",
+                        "Attack-Up",
+                        "Attack-Straight",
+                        "Attack-Down",
+                        "Shoot-Up",
+                        "Shoot-Straight",
+                        "Shoot-Down",
+                        "2-Hex-Attack-Up",
+                        "2-Hex-Attack-Straight",
+                        "2-Hex-Attack-Down",
+                        "Start-Moving",
+                        "Stop-Moving",
+                };
+            } else if (d32.groups.size() >= 10) {
+                groupNames = new String[]{
+                        "Up",
+                        "Up-Right",
+                        "Right",
+                        "Down-Right",
+                        "Down",
+                        "Move-Up",
+                        "Move-Up-Right",
+                        "Move-Right",
+                        "Move-Down-Right",
+                        "Move-Down",
+                };
+            } else if (d32.groups.size() >= 5) {
+                groupNames = new String[]{
+                        "Standing",
+                        "Shuffle",
+                        "Failure",
+                        "Victory",
+                        "Cast-Spell",
+                };
+            } else {
+                groupNames = new String[]{};
+            }
+
+            Map<Image, List<D32.Frame>> imageToFrames = new LinkedHashMap<>();
+            Map<D32.Frame, Image> imageMap = ImgFilesUtils.loadD32(d32, true, true);
+            for (Map.Entry<D32.Frame, Image> entry : imageMap.entrySet()) {
+                imageToFrames.computeIfAbsent(entry.getValue(), k -> new ArrayList<>()).add(entry.getKey());
+            }
+            Map<D32.Frame, String> names = new LinkedHashMap<>();
+
+            for (Map.Entry<Image, List<D32.Frame>> entry : imageToFrames.entrySet()) {
+                Image image = entry.getKey();
+                List<D32.Frame> frames = entry.getValue();
+
+                D32.Frame mainFrame = frames.get(0);
+                String extra = "";
+                if (frames.size() > 1) {
+                    StringBuilder extraBuilder = new StringBuilder();
+                    for (int i = 1; i < frames.size(); i++) {
+                        D32.Frame frame = frames.get(i);
+                        extraBuilder.append("_")
+                                .append(frame.group.index)
+                                .append(".")
+                                .append(frame.index);
+                    }
+                    extra = extraBuilder.toString();
+                }
+                D32.Group group = mainFrame.group;
+
+                String groupName = groupNames.length > group.index ? (groupNames[group.index] + "_") : "";
+                String fileName;
+                if (useGroups) {
+                    fileName = String.format(
+                            "[G_%03d_%s%03d%s] %s." + (isPng ? "png" : "bmp"),
+                            group.index,
+                            groupName,
+                            mainFrame.index,
+                            extra,
+                            mainFrame.name
+                    );
+                } else {
+                    fileName = mainFrame.name + (isPng ? ".png" : ".bmp");
+                }
+
+                for (D32.Frame frame : frames) {
+                    names.put(frame, fileName);
+                }
+
+                if (isPng) {
+                    try (OutputStream out = Files.newOutputStream(path.resolve(fileName))){
+                        ImageInfo header = new ImageInfo((int) image.getWidth(), (int) image.getHeight(), 8, true, false, false);
+                        PngWriter pngWriter = new PngWriter(out, header);
+
+                        for (int y = 0; y < image.getHeight(); y++) {
+                            ImageLineByte line = new ImageLineByte(header);
+                            for (int x = 0; x < image.getWidth(); x++) {
+                                int color = image.getPixelReader().getArgb(x, y);
+                                line.getScanline()[x * 4] = (byte) (color >>> 0);
+                                line.getScanline()[x * 4 + 1] = (byte) (color >>> 8);
+                                line.getScanline()[x * 4 + 2] = (byte) (color >>> 16);
+                                line.getScanline()[x * 4 + 3] = (byte) (color >>> 24);
+                            }
+                            pngWriter.writeRow(line);
+                        }
+                        pngWriter.end();
+                    }
+                } else {
+                    int[][] decode = d32.decode(mainFrame);
+                    ImgFilesUtils.d32ToPcxColors(decode, true);
+                    ImgFilesUtils.writeBmp(path.resolve(fileName), decode);
+                }
+            }
+
+            Properties properties = new Properties() {
+                @Override
+                public Set<Map.Entry<Object, Object>> entrySet() {
+                    final TreeSet<Map.Entry<Object, Object>> entries = new TreeSet<>((o1, o2) -> {
+                        return ((Comparable) o1.getKey()).compareTo(o2.getKey());
+                    });
+                    entries.addAll(super.entrySet());
+                    return entries;
+                }
+            };
+            properties.setProperty("a.format", "d32");
+            properties.setProperty("a.width", d32.fullWidth + "");
+            properties.setProperty("a.height", d32.fullHeight + "");
+            properties.setProperty("a.groups", d32.groups.size() + "");
+
+            int i = 0;
+            for (D32.Group group : d32.groups) {
+                properties.setProperty("group." + i + ".frames", group.frames.size() + "");
+                properties.setProperty("group." + i + ".index", group.index + "");
+                for (D32.Frame frame : group.frames) {
+                    properties.setProperty("group." + i + ".frame." + frame.index + ".file", names.get(frame));
+                    properties.setProperty("group." + i + ".frame." + frame.index + ".name", frame.name);
+                    properties.setProperty("group." + i + ".frame." + frame.index + ".type", String.valueOf(frame.frameDrawType));
+                }
+                i++;
+            }
+
+            try (Writer writer = Files.newBufferedWriter(path.resolve("def.cfg"), StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING)) {
+                properties.store(writer, "Def config");
+            }
+            return null;
+        });
+
+        getHostServices().showDocument(path.toString());
+    }
+
+    private void unpackDef(Item item) {
+        Path path = getUnpackedPath(item);
+        ButtonType justOpen = new ButtonType("Just open");
+        ButtonType rewrite = new ButtonType("Rewrite");
+        ButtonType unpack = new ButtonType("Unpack");
+
+        Alert dialog;
+        if (Files.exists(path)) {
+            dialog = new Alert(
+                    Alert.AlertType.WARNING,
+                    "This def already unpacked. Rewrite?",
+                    justOpen,
+                    rewrite,
+                    ButtonType.CANCEL
+            );
+        } else {
+            dialog = new Alert(
+                    Alert.AlertType.CONFIRMATION,
+                    "Unpack this def?",
+                    unpack,
+                    ButtonType.CANCEL
+            );
+        }
+
+        Optional<ButtonType> shown = dialog.showAndWait();
+        if (shown.isEmpty()) {
+            return;
+        }
+        ButtonType buttonType = shown.get();
+        if (buttonType.getButtonData() == ButtonBar.ButtonData.CANCEL_CLOSE) {
+            return;
+        }
+
+        if (buttonType == unpack) {
+            try {
+                Files.createDirectory(path);
+            } catch (IOException ex) {
+                ex.printStackTrace();
+                return;
+            }
+        }
+        if (buttonType == unpack || buttonType == rewrite) {
+            Path p = item.local.path;
+            ImgFilesUtils.processFile(p, null, buffer -> {
+                Def def = new Def(p.toString(), buffer);
+                String[] groupNames = switch (def.type) {
+                    case 0x42 -> new String[]{
+                            "Moving",
+                            "Mouse-Over",
+                            "Standing",
+                            "Getting-Hit",
+                            "Defend",
+                            "Death",
+                            "Unused-Death",
+                            "Turn-Left",
+                            "Turn-Right",
+                            "Turn-Left",
+                            "Turn-Right",
+                            "Attack-Up",
+                            "Attack-Straight",
+                            "Attack-Down",
+                            "Shoot-Up",
+                            "Shoot-Straight",
+                            "Shoot-Down",
+                            "2-Hex-Attack-Up",
+                            "2-Hex-Attack-Straight",
+                            "2-Hex-Attack-Down",
+                            "Start-Moving",
+                            "Stop-Moving",
+                    };
+                    case 0x44 -> new String[]{
+                            "Up",
+                            "Up-Right",
+                            "Right",
+                            "Down-Right",
+                            "Down",
+                            "Move-Up",
+                            "Move-Up-Right",
+                            "Move-Right",
+                            "Move-Down-Right",
+                            "Move-Down",
+                    };
+                    case 0x49 -> new String[]{
+                            "Standing",
+                            "Shuffle",
+                            "Failure",
+                            "Victory",
+                            "Cast-Spell",
+                    };
+                    default -> new String[]{};
+                };
+
+                Map<Image, List<Def.Frame>> imageToFrames = new LinkedHashMap<>();
+                Map<Def.Frame, Image> imageMap = ImgFilesUtils.loadDef(def);
+                for (Map.Entry<Def.Frame, Image> entry : imageMap.entrySet()) {
+                    imageToFrames.computeIfAbsent(entry.getValue(), k -> new ArrayList<>()).add(entry.getKey());
+                }
+                Map<Def.Frame, String> names = new LinkedHashMap<>();
+
+                for (Map.Entry<Image, List<Def.Frame>> entry : imageToFrames.entrySet()) {
+                    Image image = entry.getKey();
+                    List<Def.Frame> frames = entry.getValue();
+
+                    Def.Frame mainFrame = frames.get(0);
+                    String extra = "";
+                    if (frames.size() > 1) {
+                        StringBuilder extraBuilder = new StringBuilder();
+                        for (int i = 1; i < frames.size(); i++) {
+                            Def.Frame frame = frames.get(i);
+                            extraBuilder.append("_")
+                                    .append(frame.group.index)
+                                    .append(".")
+                                    .append(frame.index);
+                        }
+                        extra = extraBuilder.toString();
+                    }
+                    Def.Group group = mainFrame.group;
+
+                    String groupName = groupNames.length > group.index ? (groupNames[group.index] + "_") : "";
+                    String fileName = String.format("[G_%03d_%s%03d%s] %s.png", group.index, groupName, mainFrame.index, extra, mainFrame.name);
+                    for (Def.Frame frame : frames) {
+                        names.put(frame, fileName);
+                    }
+
+                    try (OutputStream out = Files.newOutputStream(path.resolve(fileName))){
+                        ImageInfo header = new ImageInfo((int)image.getWidth(), (int)image.getHeight(), 8, false, false, true);
+                        PngWriter pngWriter = new PngWriter(out, header);
+                        PngChunkPLTE plteChunk = pngWriter.getMetadata().createPLTEChunk();
+                        plteChunk.setNentries(256);
+                        Map<Integer, Byte> colors = new HashMap<>();
+                        for (int i = 0; i < 256; i++) {
+                            int c = def.palette[i];
+                            int r1 = (c >>> 16) & 0xff;
+                            int g = (c >>> 8) & 0xff;
+                            int b = c & 0xff;
+                            plteChunk.setEntry(i, r1, g, b);
+                            colors.put(c, (byte)i);
+                        }
+
+                        for (int y = 0; y < image.getHeight(); y++) {
+                            ImageLineByte line = new ImageLineByte(header);
+                            for (int x = 0; x < image.getWidth(); x++) {
+                                int color = image.getPixelReader().getArgb(x, y);
+                                line.getScanline()[x] = color >>> 24 == 0 ? 0 : colors.get(color);
+                            }
+                            pngWriter.writeRow(line);
+                        }
+                        pngWriter.end();
+                    }
+                }
+
+                Properties properties = new Properties() {
+                    @Override
+                    public Set<Map.Entry<Object, Object>> entrySet() {
+                        final TreeSet<Map.Entry<Object, Object>> entries = new TreeSet<>((o1, o2) -> {
+                            return ((Comparable) o1.getKey()).compareTo(o2.getKey());
+                        });
+                        entries.addAll(super.entrySet());
+                        return entries;
+                    }
+                };
+                properties.setProperty("a.format", "def");
+                properties.setProperty("a.type", def.type + "");
+                properties.setProperty("a.width", def.fullWidth + "");
+                properties.setProperty("a.height", def.fullHeight + "");
+                properties.setProperty("a.groups", def.groups.size() + "");
+
+                for (Def.Group group : def.groups) {
+                    properties.setProperty("group." + group.index + ".frames", group.frames.size() + "");
+                    for (Def.Frame frame : group.frames) {
+                        properties.setProperty("group." + group.index + ".frame." + frame.index + ".file", names.get(frame));
+                        properties.setProperty("group." + group.index + ".frame." + frame.index + ".name", frame.name);
+                        properties.setProperty("group." + group.index + ".frame." + frame.index + ".compression", frame.compression + "");
+                    }
+                }
+
+                try (Writer writer = Files.newBufferedWriter(path.resolve("def.cfg"), StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING)) {
+                    properties.store(writer, "Def config");
+                }
+                return null;
+            });
+        }
+
+        getHostServices().showDocument(path.toString());
+    }
+
+    private void expandLod(Item item, TreeItem<Item> treeItem) {
+        TreeSet<String> allResources = new TreeSet<>();
+        Map<String, LodFile.SubFileMeta> localMapping = new HashMap<>();
+        Map<String, LodFile.SubFileMeta> remoteMapping = new HashMap<>();
+
+        try {
+            if (item.local.isFile) {
+                LodFile lod = LodFile.load(item.local.path);
+                for (LodFile.SubFileMeta subFile : lod.subFiles) {
+                    String name = subFile.nameAsString.toLowerCase();
+                    allResources.add(name);
+                    localMapping.put(name, subFile);
+                }
+            }
+            if (item.remote.isFile) {
+                LodFile lod = LodFile.load(item.remote.path);
+                for (LodFile.SubFileMeta subFile : lod.subFiles) {
+                    String name = subFile.nameAsString.toLowerCase();
+                    allResources.add(name);
+                    remoteMapping.put(name, subFile);
+                }
+            }
+
+            List<TreeItem<Item>> items = new ArrayList<>();
+            for (String res : allResources) {
+                LodFile.SubFileMeta localMeta = localMapping.get(res);
+                LodFile.SubFileMeta remoteMeta = remoteMapping.get(res);
+
+                String localName = localMeta == null
+                        ? remoteMeta.nameAsString
+                        : localMeta.nameAsString;
+
+                String remoteName = remoteMeta == null
+                        ? localMeta.nameAsString
+                        : remoteMeta.nameAsString;
+
+
+                FileInfo localFile = new FileInfo(
+                        item.local.path.resolveSibling(item.local.path.getFileName() + "?" + localName),
+                        localName,
+                        null,
+                        localMeta == null ? null : (long) localMeta.uncompressedSize,
+                        false,
+                        localMeta != null
+                );
+                FileInfo remoteFile = new FileInfo(
+                        item.remote.path.resolveSibling(item.remote.path.getFileName() + "?" + remoteName),
+                        remoteName,
+                        null,
+                        remoteMeta == null ? null : (long) remoteMeta.uncompressedSize,
+                        false,
+                        remoteMeta != null
+                );
+
+                items.add(new TreeItem<>(new Item(localFile, remoteFile, true)));
+            }
+            treeItem.getChildren().setAll(items);
+            treeItem.setExpanded(true);
+        } catch (IOException ex) {
+            ex.printStackTrace();
+        }
+    }
+
     private TreeItem<Item> filterForObserve() {
         Predicate<TreeItem<Item>> preFilter = item -> true;
         Function<TreeItem<Item>, TreeItem<Item>> fold = item -> {
@@ -947,10 +1417,29 @@ public class DiffUi extends Application {
         return filter == null ? new TreeItem<>(rootItem.getValue()) : filter;
     }
 
+    private TreeItem<Item> filterForInProgress() {
+        Predicate<TreeItem<Item>> preFilter = item -> true;
+        Function<TreeItem<Item>, TreeItem<Item>> fold = item -> {
+            if (item.getChildren().isEmpty()) {
+                if (!item.getValue().local.name.startsWith("[")
+                        || !item.getValue().local.name.endsWith("]")
+                        || item.getValue().local.isFile
+                        || item.getValue().remote.isFile
+                ) {
+                    return null;
+                }
+            }
+            item.setExpanded(true);
+            return item;
+        };
+        TreeItem<Item> filter = filter(rootItem, preFilter, fold);
+        return filter == null ? new TreeItem<>(rootItem.getValue()) : filter;
+    }
+
     private TreeItem<Item> filterForFetch() {
         Predicate<TreeItem<Item>> preFilter = item -> {
             if (!item.getChildren().isEmpty()) {
-                return true;
+                return !item.getValue().local.name.startsWith("[");
             }
             return item.getValue().status == ItemStatus.REMOTE_NEWER;
         };
@@ -974,7 +1463,7 @@ public class DiffUi extends Application {
     private TreeItem<Item> filterForPush() {
         Predicate<TreeItem<Item>> preFilter = item -> {
             if (!item.getChildren().isEmpty()) {
-                return true;
+                return !item.getValue().local.name.startsWith("[");
             }
             return item.getValue().status == ItemStatus.LOCAL_NEWER;
         };
@@ -1004,6 +1493,7 @@ public class DiffUi extends Application {
             return null;
         }
         ObservableList<TreeItem<Item>> children = item.getChildren();
+        boolean isRoot = item == rootItem;
         item = new TreeItem<>(item.getValue());
 
         for (TreeItem<Item> child : children) {
@@ -1013,7 +1503,7 @@ public class DiffUi extends Application {
             }
         }
 
-        return fold.apply(item);
+        return isRoot ? item : fold.apply(item);
     }
 
     private TreeItem<Item> loadTree() throws IOException {
@@ -1093,7 +1583,7 @@ public class DiffUi extends Application {
         for (Path path : localPaths) {
             String name = path.getFileName().toString().toLowerCase();
             if (name.endsWith(".def")) {
-                ImgFilesUtils.validateDef(localPath.resolve(path), skipFrames);
+                ImgFilesUtils.validateDefNames(localPath.resolve(path), skipFrames);
             } else if (name.endsWith(".lod")) {
 
             }
@@ -1106,6 +1596,73 @@ public class DiffUi extends Application {
         }
         previewLocal.show(treeItem.getValue().local.path);
         previewRemote.show(treeItem.getValue().remote.path);
+        previewDiff.show(treeItem.getValue().local.path, treeItem.getValue().remote.path);
+
+        PreviewNode[] node = new PreviewNode[1];
+
+        MenuItem showIssues = new MenuItem("Show issues");
+        showIssues.setOnAction(a -> {
+            node[0].postProcess(image -> {
+                int multiply = 8;
+                int width = (int) image.getWidth();
+                int height = (int) image.getHeight();
+                WritableImage result = new WritableImage(width * multiply, height * multiply);
+                int[] scanline = new int[(int) result.getWidth()];
+                for (int y = 0, dy = 0; y < height; y++) {
+                    WritablePixelFormat<IntBuffer> format = PixelFormat.getIntArgbInstance();
+                    image.getPixelReader().getPixels(0, y, width, 1, format, scanline, 0, width);
+                    for (int src = width - 1, dst = scanline.length - 1; src >= 0; src--) {
+                        boolean invalid = ImgFilesUtils.invalidColorDiff(ImgFilesUtils.colorDifFromStd(scanline[src]));
+                        for (int i = 0; i < multiply; i++, dst--) {
+                            scanline[dst] = scanline[src];
+                        }
+                        if (invalid) {
+                            scanline[dst + multiply] = 0xff000000;
+                            scanline[dst + 1] = 0xff000000;
+                        }
+                    }
+                    dy++;
+                    for (int i = 0; i < multiply - 2; i++, dy++) {
+                        result.getPixelWriter().setPixels(0, dy, scanline.length, 1, format, scanline, 0, scanline.length);
+                    }
+                    for (int i = 0; i < scanline.length; i++) {
+                        boolean invalid = ImgFilesUtils.invalidColorDiff(ImgFilesUtils.colorDifFromStd(scanline[i]));
+                        if (invalid) {
+                            scanline[i] = 0xff000000;
+                        }
+                    }
+                    result.getPixelWriter().setPixels(0, dy++, scanline.length, 1, format, scanline, 0, scanline.length);
+                    result.getPixelWriter().setPixels(0, dy - multiply, scanline.length, 1, format, scanline, 0, scanline.length);
+                }
+                return result;
+            });
+        });
+
+        MenuItem showFrame = new MenuItem("Show frame");
+        showFrame.setOnAction(a -> {
+            TextInputDialog dialog = new TextInputDialog("Frame number");
+            Optional<String> result = dialog.showAndWait();
+            result.ifPresent(s -> node[0].showFrame(Integer.parseInt(s)));
+        });
+        ContextMenu menu = new ContextMenu(showIssues, showFrame);
+
+        EventHandler<ContextMenuEvent> handler = e -> {
+            node[0] = (PreviewNode) e.getSource();
+            menu.show(node[0], e.getScreenX(), e.getScreenY());
+        };
+        previewLocal.setOnContextMenuRequested(handler);
+        previewRemote.setOnContextMenuRequested(handler);
+        previewDiff.setOnContextMenuRequested(handler);
+    }
+
+    public void applyToLeafs(TreeItem<Item> treeItem, Consumer<Item> consumer) {
+        if (treeItem.isLeaf()) {
+            consumer.accept(treeItem.getValue());
+        } else {
+            for (TreeItem<Item> child : treeItem.getChildren()) {
+                applyToLeafs(child, consumer);
+            }
+        }
     }
 
     private PreviewNode preview() {

@@ -18,6 +18,8 @@ java {
 compileJava {
     options.encoding = 'UTF-8'
     options.compilerArgs.addAll([
+            '-g',
+
             '--add-exports',
             'javafx.graphics/com.sun.javafx.stage=LodInfra',
 
