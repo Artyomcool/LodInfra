@@ -1,5 +1,7 @@
 package com.github.artyomcool.lodinfra.h3common;
 
+import com.github.artyomcool.lodinfra.ui.ImgFilesUtils;
+
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
@@ -110,6 +112,22 @@ public class Def {
 
             groups.add(group);
         }
+    }
+
+    public ImgFilesUtils.Box box(Frame frame) {
+        buffer.position(frame.offset);
+
+        int size = buffer.getInt();
+        int compression = buffer.getInt();
+        int fullWidth = buffer.getInt();
+        int fullHeight = buffer.getInt();
+
+        int width = buffer.getInt();
+        int height = buffer.getInt();
+        int x = buffer.getInt();
+        int y = buffer.getInt();
+
+        return new ImgFilesUtils.Box(x, y, x + width - 1, y + height - 1);
     }
 
     public int[][] decode(Frame frame) {

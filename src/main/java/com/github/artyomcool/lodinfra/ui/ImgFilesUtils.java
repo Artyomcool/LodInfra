@@ -388,7 +388,14 @@ public class ImgFilesUtils {
                 for (int j = 0; j < group.frames.size(); j++) {
                     Def.Frame frame = group.frames.get(j);
                     if (checked.add(frame.offset)) {
-                        validateColors(path + ":group_" + i + ":frame_" + j + ":frameIndex:" + fi, def.decode(frame));
+                        int[][] pixels = def.decode(frame);
+                        validateColors(path + ":group_" + i + ":frame_" + j + ":frameIndex:" + fi, pixels);
+                        pcxToD32Colors(pixels);
+                        Box box = calculateTransparent(pixels);
+                        Box b2 = def.box(frame);
+                        if (box.left != b2.left || box.top != b2.top || box.bottom != b2.bottom || box.right != b2.right) {
+                            System.err.println("Transparent indents: " + path + ":group_" + i + ":frame_" + j);
+                        }
                     }
                     fi++;
                 }
@@ -406,7 +413,12 @@ public class ImgFilesUtils {
                 for (int j = 0; j < group.frames.size(); j++) {
                     D32.Frame frame = group.frames.get(j);
                     if (checked.add(frame.offset)) {
-                        validateColors(path + ":group_" + i + ":frame_" + j, d32.decode(frame));
+                        int[][] pixels = d32.decode(frame, false);
+                        validateColors(path + ":group_" + i + ":frame_" + j, pixels);
+                        Box box = calculateTransparent(pixels);
+                        if (box.left != 0 || box.top != 0 || box.bottom != pixels.length - 1 || box.right != pixels[0].length - 1) {
+                            System.err.println("Transparent indents: " + path + ":group_" + i + ":frame_" + j);
+                        }
                     }
                 }
             }

@@ -307,6 +307,10 @@ public class D32 {
     }
 
     public int[][] decode(Frame frame) {
+        return decode(frame, true);
+    }
+
+    public int[][] decode(Frame frame, boolean useOffsets) {
         buffer.position(frame.offset);
 
         int frameHeaderSize = buffer.getInt();
@@ -323,15 +327,26 @@ public class D32 {
         int frameInfoSize = buffer.getInt();
         int frameDrawType = buffer.getInt();
 
-        int[][] image = new int[height][width];
+        if (useOffsets) {
+            int[][] image = new int[height][width];
 
-        for (int y = nonZeroColorHeight + nonZeroColorTop - 1; y >= nonZeroColorTop; y--) {
-            for (int x = nonZeroColorLeft; x < nonZeroColorLeft + nonZeroColorWidth; x++) {
-                image[y][x] = buffer.getInt();
+            for (int y = nonZeroColorHeight + nonZeroColorTop - 1; y >= nonZeroColorTop; y--) {
+                for (int x = nonZeroColorLeft; x < nonZeroColorLeft + nonZeroColorWidth; x++) {
+                    image[y][x] = buffer.getInt();
+                }
             }
+            return image;
+        } else {
+            int[][] image = new int[nonZeroColorHeight][nonZeroColorWidth];
+
+            for (int y = nonZeroColorHeight - 1; y >= 0; y--) {
+                for (int x = 0; x < nonZeroColorWidth; x++) {
+                    image[y][x] = buffer.getInt();
+                }
+            }
+            return image;
         }
 
-        return image;
     }
 
     public void changeColors(Frame frame, IntUnaryOperator changeColor) {
