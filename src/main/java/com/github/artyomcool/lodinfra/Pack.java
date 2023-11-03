@@ -11,7 +11,6 @@ import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
-import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicReference;
@@ -19,7 +18,7 @@ import java.util.zip.DataFormatException;
 
 public class Pack {
 
-    private static final String VERSION = "1.3";
+    private static final String VERSION = "1.4";
 
     public static void main(String[] a) throws IOException {
         System.out.println("Version: " + VERSION);
@@ -123,7 +122,7 @@ public class Pack {
         }
     }
 
-    private static Map<String, Instant> loadTimestamp(Path file, String allowedLangs) {
+    private static Map<String, String> loadTimestamp(Path file, String allowedLangs) {
         try {
             if (!Files.exists(file)) {
                 System.out.println("No incremental state file");
@@ -134,12 +133,12 @@ public class Pack {
             properties.load(new StringReader(text));
             String prevIgnoreLangs = properties.getProperty("*allowedLangs");
             if (prevIgnoreLangs != null && prevIgnoreLangs.equals(allowedLangs)) {
-                Map<String, Instant> map = new TreeMap<>();
+                Map<String, String> map = new TreeMap<>();
                 for (String name : properties.stringPropertyNames()) {
                     if (name.startsWith("*")) {
                         continue;
                     }
-                    map.put(name, Instant.parse(properties.getProperty(name)));
+                    map.put(name, properties.getProperty(name));
                 }
                 return map;
             } else {
@@ -153,12 +152,10 @@ public class Pack {
         }
     }
 
-    private static void storeTimestamp(Path file, Map<String, Instant> now, String allowedLangs) throws IOException {
+    private static void storeTimestamp(Path file, Map<String, String> now, String allowedLangs) throws IOException {
         Properties properties = new Properties();
         properties.put("*allowedLangs", allowedLangs);
-        for (Map.Entry<String, Instant> entry : now.entrySet()) {
-            properties.put(entry.getKey(), entry.getValue().toString());
-        }
+        properties.putAll(now);
         StringWriter writer = new StringWriter();
         properties.store(writer, "State of incremental work");
         Files.writeString(file, writer.toString());

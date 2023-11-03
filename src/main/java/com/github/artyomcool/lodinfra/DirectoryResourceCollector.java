@@ -24,8 +24,8 @@ public class DirectoryResourceCollector {
     public String resPath = ".";
     public boolean dry = false;
     public boolean logDetailedDiff = false;
-    public Map<String, Instant> previouslyModifiedAt = null;
-    public Map<String, Instant> nowModifiedAt = null;
+    public Map<String, String> previouslyModifiedAt = null;
+    public Map<String, String> nowModifiedAt = null;
     public int compressionLevel = 0;
     public Set<String> allowedLangs = new HashSet<>();
     public Set<String> dontWarnAboutNames = new HashSet<>();
@@ -87,7 +87,7 @@ public class DirectoryResourceCollector {
         }
 
         Map<Path, LodResources> lodToResource = new LinkedHashMap<>();
-        Map<String, Instant> currentResourcesTimestamps = new TreeMap<>();
+        Map<String, String> currentResourcesTimestamps = new TreeMap<>();
 
         int ignored = 0;
         int changed = 0;
@@ -95,14 +95,23 @@ public class DirectoryResourceCollector {
         for (Map.Entry<String, List<Path>> entry : xlsFilesByLodName.entrySet()) {
             String lodName = entry.getKey();
             for (Path xlsPath : entry.getValue()) {
+                String resourceName = Resource.resourceName(xlsPath);
                 if (previouslyModifiedAt != null) {
                     Instant lastModifiedTime = Files.getLastModifiedTime(xlsPath).toInstant();
-                    String resourceName = Resource.resourceName(xlsPath);
-                    Instant previously = previouslyModifiedAt.get(lodName + "^" + resourceName);
-                    currentResourcesTimestamps.put(lodName + "^" + resourceName, lastModifiedTime);
+                    Instant previously = Instant.parse(previouslyModifiedAt.get(lodName + "^" + resourceName));
+                    currentResourcesTimestamps.put(lodName + "^" + resourceName, lastModifiedTime.toString());
                     if (lastModifiedTime.equals(previously)) {
-                        System.out.println("Xls " + xlsPath + " is modified at " + lastModifiedTime + ", ignoring (last timestamp is " + previously + ")");
-                        continue;
+                        String childrenKey = lodName + "^" + resourceName + ":children";
+                        String children = previouslyModifiedAt.get(childrenKey);
+                        if (children != null) {
+                            for (String child : children.split(",")) {
+                                String name = lodName + "^" + child;
+                                currentResourcesTimestamps.put(name, "!");
+                            }
+                            currentResourcesTimestamps.put(childrenKey, children);
+                            System.out.println("Xls " + xlsPath + " is modified at " + lastModifiedTime + ", ignoring (last timestamp is " + previously + ")");
+                            continue;
+                        }
                     }
                 }
 
@@ -120,6 +129,15 @@ public class DirectoryResourceCollector {
                         Path lodPath = Utils.resolveTemplate(dir, pathPattern, resource.lang, lodName);
                         lodToResource.computeIfAbsent(lodPath, k -> new LodResources(lodName)).addResource(resource);
                         changed++;
+                    }
+                    if (previouslyModifiedAt != null) {
+                        List<String> names = new ArrayList<>(resources.size());
+                        for (Resource resource : resources) {
+                            names.add(resource.name);
+                            String name = lodName + "^" + resource.name;
+                            currentResourcesTimestamps.put(name, "!");
+                        }
+                        currentResourcesTimestamps.put(lodName + "^" + resourceName + ":children", String.join(",", names));
                     }
                 }
             }
@@ -145,8 +163,8 @@ public class DirectoryResourceCollector {
                     if (previouslyModifiedAt != null) {
                         Instant lastModifiedTime = Files.getLastModifiedTime(path).toInstant();
                         String resourceName = Resource.resourceName(path);
-                        Instant previously = previouslyModifiedAt.get(lodName + "^" + resourceName);
-                        currentResourcesTimestamps.put(lodName + "^" + resourceName, lastModifiedTime);
+                        Instant previously = parseInstant(previouslyModifiedAt.get(lodName + "^" + resourceName));
+                        currentResourcesTimestamps.put(lodName + "^" + resourceName, lastModifiedTime.toString());
                         if (lastModifiedTime.equals(previously)) {
                             ignored++;
                             continue;
@@ -174,6 +192,10 @@ public class DirectoryResourceCollector {
         if (logDetailedDiff) {
             writeLog(logsByLod);
         }
+    }
+
+    private static Instant parseInstant(String text) {
+        return text == null ? null : Instant.parse(text);
     }
 
     private Map<Path, String> writeLods(Map<Path, LodResources> lodToResource) throws IOException, DataFormatException {
