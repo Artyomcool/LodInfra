@@ -98,7 +98,7 @@ public class DirectoryResourceCollector {
                 String resourceName = Resource.resourceName(xlsPath);
                 if (previouslyModifiedAt != null) {
                     Instant lastModifiedTime = Files.getLastModifiedTime(xlsPath).toInstant();
-                    Instant previously = Instant.parse(previouslyModifiedAt.get(lodName + "^" + resourceName));
+                    Instant previously = parseInstant(previouslyModifiedAt.get(lodName + "^" + resourceName));
                     currentResourcesTimestamps.put(lodName + "^" + resourceName, lastModifiedTime.toString());
                     if (lastModifiedTime.equals(previously)) {
                         String childrenKey = lodName + "^" + resourceName + ":children";
