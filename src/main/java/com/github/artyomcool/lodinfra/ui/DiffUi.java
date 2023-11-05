@@ -10,6 +10,7 @@ import com.github.artyomcool.lodinfra.h3common.LodFile;
 import com.jfoenix.controls.JFXTreeTableView;
 import com.jfoenix.controls.datamodels.treetable.RecursiveTreeObject;
 import javafx.application.Application;
+import javafx.application.Platform;
 import javafx.beans.property.SimpleObjectProperty;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.beans.value.ChangeListener;
@@ -51,6 +52,10 @@ import java.time.format.DateTimeFormatterBuilder;
 import java.time.temporal.ChronoField;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
@@ -58,8 +63,9 @@ import java.util.prefs.Preferences;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
-public class DiffUi extends Application {
+import static javafx.scene.control.TreeTableView.CONSTRAINED_RESIZE_POLICY;
 
+public class DiffUi extends Application {
 
     private final Preferences prefs = Preferences.userRoot().node(this.getClass().getName());
     private final Insets padding = new Insets(2, 2, 2, 2);
@@ -69,12 +75,20 @@ public class DiffUi extends Application {
     private final Properties cfg;
     private final Path logs;
     private final String nick;
+    private final Executor pollFilesExecutor = Executors.newSingleThreadExecutor(runnable -> {
+        Thread thread = new Thread(runnable);
+        thread.setDaemon(true);
+        return thread;
+    });
+
+    private Consumer<TreeItem<Item>> onFilesChangedAction = t -> {};
 
     private Stage primaryStage;
     private PreviewNode previewLocal;
     private PreviewNode previewRemote;
     private PreviewNode previewDiff;
     private TreeItem<Item> rootItem;
+    private WatchService watchService;
 
     public DiffUi(Path localPath, Path remotePath, Path cfg, Path logs, String nick) {
         this.localPath = localPath.toAbsolutePath();
@@ -95,6 +109,12 @@ public class DiffUi extends Application {
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
+    }
+
+    @Override
+    public void stop() throws Exception {
+        super.stop();
+        watchService.close();
     }
 
     record FileInfo(Path path, String name, FileTime lastModified, Long size, boolean isDirectory, boolean isFile) {
@@ -185,6 +205,7 @@ public class DiffUi extends Application {
             StackPane root = new StackPane();
 
             VBox lastFiles = files(root);
+            lastFiles.setPrefWidth(600);
             previewLocal = preview();
             previewLocal.setAlignment(Pos.CENTER);
             previewRemote = preview();
@@ -197,11 +218,9 @@ public class DiffUi extends Application {
                     withLabel(previewDiff, "Perview Diff")
                     );
             ScrollPane pane = new ScrollPane(previews);
-            pane.setMinWidth(350);
-            pane.setPrefWidth(350);
-            pane.setMaxWidth(350);
-            HBox box = new HBox(lastFiles, pane);
-            HBox.setHgrow(lastFiles, Priority.ALWAYS);
+            pane.setPrefWidth(400);
+            SplitPane box = new SplitPane(lastFiles, pane);
+            box.setDividerPosition(0, 0.666);
             root.getChildren().add(box);
 
             Scene scene = new Scene(root);
@@ -211,13 +230,39 @@ public class DiffUi extends Application {
             primaryStage.setMinHeight(800);
             primaryStage.setScene(scene);
             primaryStage.show();
+
+            watchService = localPath.getFileSystem().newWatchService();
+            localPath.register(watchService,
+                    StandardWatchEventKinds.ENTRY_CREATE,
+                    StandardWatchEventKinds.ENTRY_DELETE,
+                    StandardWatchEventKinds.ENTRY_MODIFY);
+            remotePath.register(watchService,
+                    StandardWatchEventKinds.ENTRY_CREATE,
+                    StandardWatchEventKinds.ENTRY_DELETE,
+                    StandardWatchEventKinds.ENTRY_MODIFY);
+
+            pollFilesExecutor.execute(() -> {
+                try {
+                    watchService.take();
+                    //noinspection StatementWithEmptyBody
+                    while (watchService.poll(1, TimeUnit.SECONDS) != null) {
+                        // skip
+                    }
+                    TreeItem<Item> item = loadTree();
+                    Platform.runLater(() -> onFilesChangedAction.accept(item));
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
+            });
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
     }
 
     private void executeCheckTreeItem(Map<Item, ItemAction> actions, TreeItem<Item> treeItem, boolean checked, ItemAction positive) {
-        Item item = treeItem.getValue();
+        Item item;
         if (checked) {
             markWithChildren(actions, treeItem, positive);
             a:
@@ -279,14 +324,20 @@ public class DiffUi extends Application {
 
         HBox leftPanel = new HBox();
         HBox rightPanel = new HBox();
+        HBox modesWrapper = new HBox(modes);
         leftPanel.setAlignment(Pos.CENTER_LEFT);
         rightPanel.setAlignment(Pos.CENTER_RIGHT);
-        TilePane panelWrapper = new TilePane();
-        panelWrapper.setPrefColumns(3);
+        modesWrapper.setAlignment(Pos.CENTER);
+        leftPanel.setSpacing(2);
+        rightPanel.setSpacing(2);
+        leftPanel.setPadding(padding);
+        rightPanel.setPadding(padding);
+        leftPanel.setMinWidth(120);
+        rightPanel.setMinWidth(120);
+        modesWrapper.setPadding(padding);
+        HBox panelWrapper = new HBox(leftPanel, modesWrapper, rightPanel);
+        HBox.setHgrow(modesWrapper, Priority.ALWAYS);
         panelWrapper.setAlignment(Pos.CENTER);
-        TilePane.setAlignment(leftPanel, Pos.CENTER_LEFT);
-        TilePane.setAlignment(rightPanel, Pos.CENTER_RIGHT);
-        panelWrapper.getChildren().setAll(leftPanel, modes, rightPanel);
 
         StackPane listWrapper = new StackPane();
         VBox listParent = new VBox(panelWrapper, listWrapper);
@@ -355,6 +406,11 @@ public class DiffUi extends Application {
                     leftPanel.getChildren().setAll(fetchButton);
                     rightPanel.getChildren().clear();
                     listWrapper.getChildren().setAll(fetchList);
+
+                    onFilesChangedAction = treeItem -> {
+                        rootItem = treeItem;
+                        updateRoot();
+                    };
                 }
             }
         });
@@ -451,7 +507,7 @@ public class DiffUi extends Application {
                 });
             }
 
-            final Button revertButton = new Button("REVERT!!!");
+            final Button revertButton = new Button("Revert (!)", downloadIcon(Color.DARKRED));
             {
                 revertButton.setOnAction(a -> {
                     Alert alert = new Alert(Alert.AlertType.WARNING, "Revert all selected files to remote version?", ButtonType.NO, ButtonType.YES);
@@ -509,9 +565,14 @@ public class DiffUi extends Application {
                     if (cachedGlobalRoot != rootItem) {
                         updateRoot();
                     }
-                    leftPanel.getChildren().clear();
-                    rightPanel.getChildren().setAll(revertButton, pushButton);
+                    leftPanel.getChildren().setAll(revertButton);
+                    rightPanel.getChildren().setAll(pushButton);
                     listWrapper.getChildren().setAll(pushList);
+
+                    onFilesChangedAction = treeItem -> {
+                        rootItem = treeItem;
+                        updateRoot();
+                    };
                 }
             }
         });
@@ -526,14 +587,23 @@ public class DiffUi extends Application {
             public void changed(ObservableValue<? extends Boolean> observable, Boolean oldValue, Boolean newValue) {
                 if (newValue) {
                     if (cachedGlobalRoot != rootItem) {
-                        cachedGlobalRoot = rootItem;
-                        itemTreeItem = DiffUi.this.filterForObserve();
-                        observeList.setRoot(itemTreeItem);
+                        updateRoot();
                     }
                     leftPanel.getChildren().clear();
                     rightPanel.getChildren().clear();
                     listWrapper.getChildren().setAll(observeList);
+
+                    onFilesChangedAction = treeItem -> {
+                        rootItem = treeItem;
+                        updateRoot();
+                    };
                 }
+            }
+
+            private void updateRoot() {
+                cachedGlobalRoot = rootItem;
+                itemTreeItem = DiffUi.this.filterForObserve();
+                observeList.setRoot(itemTreeItem);
             }
         });
         inProgress.selectedProperty().addListener(new ChangeListener<>() {
@@ -573,7 +643,9 @@ public class DiffUi extends Application {
         TreeTableColumn<Item, Long> sizeA = new TreeTableColumn<>("Local size");
         TreeTableColumn<Item, Long> sizeB = new TreeTableColumn<>("Remote size");
 
-        list.getColumns().addAll(
+        name.setMinWidth(250);
+
+        list.getColumns().setAll(
                 name,
                 timeA,
                 timeB,
@@ -581,8 +653,8 @@ public class DiffUi extends Application {
                 sizeB
         );
 
-        Font regular = Font.font(12);
-        Font bold = Font.font(null, FontWeight.BOLD, 12);
+        Font regular = Font.font("monospace", 12);
+        Font bold = Font.font("monospace", FontWeight.BOLD, 12);
 
         ItemAction positiveAction = push ? ItemAction.LOCAL_TO_REMOTE : ItemAction.REMOTE_TO_LOCAL;
         ItemAction negativeAction = push ? ItemAction.REMOTE_TO_LOCAL : ItemAction.LOCAL_TO_REMOTE;
@@ -717,8 +789,6 @@ public class DiffUi extends Application {
                         : param.getValue().getValue().remote.lastModifiedText())
         );
         timeB.setCellFactory(new Callback<>() {
-            final Font regular = Font.font(12);
-            final Font bold = Font.font(null, FontWeight.BOLD, 12);
 
             @Override
             public TreeTableCell<Item, String> call(TreeTableColumn<Item, String> param) {
@@ -750,7 +820,29 @@ public class DiffUi extends Application {
         });
 
         sizeA.setCellValueFactory(param -> new SimpleObjectProperty<>(param.getValue().getValue().local.size));
+        sizeA.setCellFactory(new Callback<TreeTableColumn<Item, Long>, TreeTableCell<Item, Long>>() {
+            @Override
+            public TreeTableCell<Item, Long> call(TreeTableColumn<Item, Long> param) {
+                return new TreeTableCell<>() {
+
+                    @Override
+                    protected void updateItem(Long text, boolean empty) {
+                        super.updateItem(text, empty);
+                        super.setGraphic(null);
+
+                        if (empty) {
+                            super.setText(null);
+                            return;
+                        }
+
+                        super.setText(text == null ? "" : text.toString());
+                        setFont(regular);
+                    }
+                };
+            }
+        });
         sizeB.setCellValueFactory(param -> new SimpleObjectProperty<>(param.getValue().getValue().remote.size));
+        sizeB.setCellFactory(sizeA.getCellFactory());
 
         list.setRowFactory(r -> new TreeTableRow<>() {
             {
@@ -840,6 +932,7 @@ public class DiffUi extends Application {
 
         list.setShowRoot(false);
         list.setFixedCellSize(20);
+        list.setColumnResizePolicy(CONSTRAINED_RESIZE_POLICY);
         return list;
     }
 
@@ -1689,9 +1782,13 @@ public class DiffUi extends Application {
     }
 
     private static Node downloadIcon() {
+        return downloadIcon(Color.CORNFLOWERBLUE);
+    }
+
+    private static Node downloadIcon(Color color) {
         String d = "M8.05,15.15H1.31C.52,15.15.2,14.83.2,14v-2.7a.9.9,0,0,1,1-1H5.27a.57.57,0,0,1,.37.16c.36.34.71.71,1.06,1.06a1.82,1.82,0,0,0,2.68,0c.36-.36.71-.73,1.09-1.08a.61.61,0,0,1,.37-.15h4a.92.92,0,0,1,1,1v2.79a.9.9,0,0,1-1,1Zm3.62-2.4a.6.6,0,1,0,0,1.19.6.6,0,1,0,0-1.19Zm1.82.61a.58.58,0,0,0,.61.58.6.6,0,1,0-.61-.58ZM6.23,5.5v-4c0-.6.2-.79.8-.79H9.11c.53,0,.74.21.75.74,0,1.25,0,2.51,0,3.76,0,.26.07.34.33.33.66,0,1.32,0,2,0a.63.63,0,0,1,.66.39.61.61,0,0,1-.2.71l-4.1,4.09a.6.6,0,0,1-1,0L3.48,6.61a.61.61,0,0,1-.21-.73.63.63,0,0,1,.66-.38h2.3Z";
         SVGPath path = new SVGPath();
-        path.setFill(Color.CORNFLOWERBLUE);
+        path.setFill(color);
         path.setStroke(null);
         path.setContent(d);
         return path;
