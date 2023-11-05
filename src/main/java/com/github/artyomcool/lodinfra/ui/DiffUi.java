@@ -243,13 +243,17 @@ public class DiffUi extends Application {
 
             pollFilesExecutor.execute(() -> {
                 try {
-                    watchService.take();
-                    //noinspection StatementWithEmptyBody
-                    while (watchService.poll(1, TimeUnit.SECONDS) != null) {
-                        // skip
+                    while (true) {
+                        WatchKey key = watchService.take();
+                        key.pollEvents();
+                        key.reset();
+                        while ((key = watchService.poll(1, TimeUnit.SECONDS)) != null) {
+                            key.pollEvents();
+                            key.reset();
+                        }
+                        TreeItem<Item> item = loadTree();
+                        Platform.runLater(() -> onFilesChangedAction.accept(item));
                     }
-                    TreeItem<Item> item = loadTree();
-                    Platform.runLater(() -> onFilesChangedAction.accept(item));
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                 } catch (IOException e) {
