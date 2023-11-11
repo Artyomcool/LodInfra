@@ -88,7 +88,7 @@ public class PreviewNode extends StackPane {
         if (fileName.endsWith(".png") || fileName.endsWith(".bmp")) {
             return Collections.singletonList(new Image(file.toAbsolutePath().toUri().toString()));
         } else if (fileName.endsWith(".def")) {
-            return loadDef(file).values();
+            return new ArrayList<>(loadDef(file).values());
         } else if (fileName.endsWith(".p32")) {
             return Collections.singletonList(loadP32(file));
         } else if (fileName.endsWith(".d32")) {

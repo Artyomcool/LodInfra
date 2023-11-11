@@ -7,9 +7,11 @@ import ar.com.hjg.pngj.chunks.PngChunkPLTE;
 import com.github.artyomcool.lodinfra.h3common.D32;
 import com.github.artyomcool.lodinfra.h3common.Def;
 import com.github.artyomcool.lodinfra.h3common.LodFile;
+import com.jfoenix.controls.JFXCheckBox;
 import com.jfoenix.controls.JFXTreeTableView;
 import com.jfoenix.controls.datamodels.treetable.RecursiveTreeObject;
 import javafx.application.Application;
+import javafx.application.HostServices;
 import javafx.application.Platform;
 import javafx.beans.property.SimpleObjectProperty;
 import javafx.beans.property.SimpleStringProperty;
@@ -54,7 +56,6 @@ import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
-import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -615,20 +616,34 @@ public class DiffUi extends Application {
             private TreeItem<Item> cachedGlobalRoot;
             private TreeItem<Item> itemTreeItem;
             final Map<Item, ItemAction> observeActions = new HashMap<>();
-            final JFXTreeTableView<Item> observeList = createListComponent(true, false, observeActions);
+            private final JFXCheckBox checkBox = new JFXCheckBox("Autobuild");
+            final JFXTreeTableView<Item> inProgressList = createListComponent(true, false, observeActions);
 
             @Override
             public void changed(ObservableValue<? extends Boolean> observable, Boolean oldValue, Boolean newValue) {
                 if (newValue) {
                     if (cachedGlobalRoot != rootItem) {
-                        cachedGlobalRoot = rootItem;
-                        itemTreeItem = DiffUi.this.filterForInProgress();
-
-                        observeList.setRoot(itemTreeItem);
+                        updateRoot();
                     }
                     leftPanel.getChildren().clear();
                     rightPanel.getChildren().clear();
-                    listWrapper.getChildren().setAll(observeList);
+                    listWrapper.getChildren().setAll(inProgressList);
+
+                    onFilesChangedAction = treeItem -> {
+                        rootItem = treeItem;
+                        updateRoot();
+                    };
+                }
+            }
+
+            private void updateRoot() {
+                cachedGlobalRoot = rootItem;
+                itemTreeItem = DiffUi.this.filterForInProgress();
+
+                inProgressList.setRoot(itemTreeItem);
+
+                if (checkBox.isSelected()) {
+                    //rebuild();
                 }
             }
         });
@@ -855,12 +870,25 @@ public class DiffUi extends Application {
                 validate.setOnAction(event -> applyToLeafs(getTreeItem() == null ? rootItem : getTreeItem(), item -> {
                     String name = item.local.path.getFileName().toString().toLowerCase();
                     if (name.endsWith(".def")) {
-                        //ImgFilesUtils.validateDefNames(item.local.path, skipFrames);
+                        ImgFilesUtils.validateDefNames(item.local.path, skipFrames);
                         ImgFilesUtils.validateDefColors(item.local.path);
+                        //ImgFilesUtils.validateDefSpecColors(item.local.path);
                     } else if (name.endsWith(".d32")) {
                         ImgFilesUtils.validateD32Colors(item.local.path);
                     } else if (name.endsWith(".p32")) {
                         ImgFilesUtils.validateP32Colors(item.local.path);
+                    } else if (name.endsWith(".lod")) {
+                        try {
+                            LodFile lod = LodFile.load(item.local.path);
+                            for (LodFile.SubFileMeta subFile : lod.subFiles) {
+                                if (subFile.nameAsString.toLowerCase().endsWith(".def")) {
+                                    Path path = item.local.path.resolveSibling(item.local.path.getFileName() + "?" + subFile.nameAsString);
+                                    ImgFilesUtils.validateDefSpecColors(path);
+                                }
+                            }
+                        } catch (IOException e) {
+                            throw new RuntimeException(e);
+                        }
                     }
                 }));
                 MenuItem fixDefNaming = new MenuItem("Fix def naming");
@@ -888,7 +916,14 @@ public class DiffUi extends Application {
                 if (!empty) {
                     if (!item.local.isDirectory && !item.remote.isDirectory) {
                         setOnMouseClicked(e -> {
-                            if (e.getClickCount() == 2) {
+                            if (e.getClickCount() == 1 && e.isControlDown()) {
+                                try {
+                                    Runtime.getRuntime().exec("explorer /select, " + item.local);
+                                } catch (IOException ex) {
+                                    throw new RuntimeException(ex);
+                                }
+                                e.consume();
+                            } else if (e.getClickCount() == 2) {
                                 TreeItem<Item> treeItem = getTreeItem();
                                 String itemName = item.local.name.toLowerCase();
                                 if (treeItem.getChildren().isEmpty() && (item.local.isFile || item.remote.isFile)) {
@@ -900,14 +935,23 @@ public class DiffUi extends Application {
                                         unpackDef(item);
                                     }
                                 }
+                                e.consume();
                             }
                         });
                     } else {
                         String itemName = item.local.name.toLowerCase();
                         if (itemName.startsWith("[") && itemName.endsWith("]")) {
                             setOnMouseClicked(e -> {
-                                if (e.getClickCount() == 2) {
+                                if (e.getClickCount() == 1 && e.isControlDown()) {
+                                    try {
+                                        Runtime.getRuntime().exec("explorer /select, " + item.local);
+                                    } catch (IOException ex) {
+                                        throw new RuntimeException(ex);
+                                    }
+                                    e.consume();
+                                } else if (e.getClickCount() == 2) {
                                     packDef(item);
+                                    e.consume();
                                 }
                             });
                         }

@@ -404,6 +404,30 @@ public class ImgFilesUtils {
         });
     }
 
+    public static void validateDefSpecColors(Path path) {
+        processFile(path, null, buffer -> {
+            Def def = new Def(path.toString(), buffer);
+            /*for (int i = 0; i < 6; i++) {
+                if (def.palette[i] != Def.SPEC_COLORS[i]) {
+                    System.err.println("Not standard palette_" + Integer.toHexString(def.type) + "[" + i + "]" + " " + path + "; should be " + Integer.toHexString(Def.SPEC_COLORS[i]) + " but was " + Integer.toHexString(def.palette[i]));
+                }
+            }*/
+            Set<Integer> checked = new HashSet<>();
+            for (int i = 0; i < def.groups.size(); i++) {
+                Def.Group group = def.groups.get(i);
+                for (int j = 0; j < group.frames.size(); j++) {
+                    Def.Frame frame = group.frames.get(j);
+                    if (checked.add(frame.offset)) {
+                        if (!def.verifySpecColors(frame)) {
+                            System.err.println("Suspicious color reference: " + path + " " + frame.name);
+                        }
+                    }
+                }
+            }
+            return null;
+        });
+    }
+
     public static void validateD32Colors(Path path) {
         processFile(path, null, buffer -> {
             D32 d32 = new D32(path.toString(), buffer);

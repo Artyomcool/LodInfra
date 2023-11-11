@@ -8,8 +8,6 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Map;
-import java.util.function.Function;
 
 public class Def {
 
@@ -128,6 +126,117 @@ public class Def {
         int y = buffer.getInt();
 
         return new ImgFilesUtils.Box(x, y, x + width - 1, y + height - 1);
+    }
+
+    public boolean verifySpecColors(Frame frame) {
+        buffer.position(frame.offset);
+
+        int size = buffer.getInt();
+        int compression = buffer.getInt();
+        int fullWidth = buffer.getInt();
+        int fullHeight = buffer.getInt();
+
+        int width = buffer.getInt();
+        int height = buffer.getInt();
+        int x = buffer.getInt();
+        int y = buffer.getInt();
+
+        int start = buffer.position();
+
+        int xx = x;
+        int yy = y;
+
+        switch (compression) {
+            case 0 -> {}
+            case 1 -> {
+                int[] offsets = new int[height];
+                for (int i = 0; i < offsets.length; i++) {
+                    offsets[i] = buffer.getInt() + start;
+                }
+                for (int i : offsets) {
+                    buffer.position(i);
+
+                    for (int w = 0; w < width; ) {
+                        int index = (buffer.get() & 0xff);
+                        int count = (buffer.get() & 0xff) + 1;
+                        for (int j = 0; j < count; j++) {
+                            if (index == 0xff) {
+                                int ci = buffer.get() & 0xff;
+                                if (ci < 6) {
+                                    return false;
+                                }
+                            }
+                            xx++;
+                        }
+                        w += count;
+                    }
+                    xx = x;
+                    yy++;
+                }
+            }
+            case 2 -> {
+                int[] offsets = new int[height];
+                for (int i = 0; i < offsets.length; i++) {
+                    offsets[i] = (buffer.getShort() & 0xffff) + start;
+                }
+                for (int i : offsets) {
+                    buffer.position(i);
+
+                    for (int w = 0; w < width; ) {
+                        int b = buffer.get() & 0xff;
+                        int index = b >> 5;
+                        int count = (b & 0x1f) + 1;
+                        for (int j = 0; j < count; j++) {
+                            if (index == 0x7) {
+                                int ci = buffer.get() & 0xff;
+                                if (ci < 6) {
+                                    return false;
+                                }
+                            }
+                            xx++;
+                            if (xx >= x + width) {
+                                yy++;
+                                xx = x;
+                            }
+                        }
+                        w += count;
+                    }
+                }
+            }
+            case 3 -> {
+                int[] offsets = new int[width * height / 32];
+                for (int i = 0; i < offsets.length; i++) {
+                    offsets[i] = (buffer.getShort() & 0xffff) + start;
+                }
+                for (int i : offsets) {
+                    buffer.position(i);
+
+                    int left = 32;
+                    while (left > 0) {
+                        int b = buffer.get() & 0xff;
+                        int index = b >> 5;
+                        int count = (b & 0x1f) + 1;
+
+                        for (int j = 0; j < count; j++) {
+                            if (index == 0x7) {
+                                int ci = buffer.get() & 0xff;
+                                if (ci < 6) {
+                                    return false;
+                                }
+                            }
+                            xx++;
+                            if (xx >= x + width) {
+                                yy++;
+                                xx = x;
+                            }
+                        }
+
+                        left -= count;
+                    }
+                }
+            }
+        }
+        return true;
     }
 
     public int[][] decode(Frame frame) {
