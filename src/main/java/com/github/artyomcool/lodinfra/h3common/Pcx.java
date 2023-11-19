@@ -56,9 +56,9 @@ public class Pcx extends DefInfo {
 
         int[] palette = new int[256];
         for (int i = 0; i < palette.length; i++) {
-            int r = buffer.get();
-            int g = buffer.get();
-            int b = buffer.get();
+            int r = buffer.get() & 0xff;
+            int g = buffer.get() & 0xff;
+            int b = buffer.get() & 0xff;
             palette[i] = 0xff000000 | r << 16 | g << 8 | b;
         }
         for (int y = 0; y < height; y ++) {
