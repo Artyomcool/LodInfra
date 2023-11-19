@@ -1,17 +1,10 @@
 package com.github.artyomcool.lodinfra.ui;
 
-import ar.com.hjg.pngj.ImageInfo;
-import ar.com.hjg.pngj.ImageLineByte;
-import ar.com.hjg.pngj.PngWriter;
-import ar.com.hjg.pngj.chunks.PngChunkPLTE;
-import com.github.artyomcool.lodinfra.h3common.D32;
-import com.github.artyomcool.lodinfra.h3common.Def;
 import com.github.artyomcool.lodinfra.h3common.LodFile;
 import com.jfoenix.controls.JFXCheckBox;
 import com.jfoenix.controls.JFXTreeTableView;
 import com.jfoenix.controls.datamodels.treetable.RecursiveTreeObject;
 import javafx.application.Application;
-import javafx.application.HostServices;
 import javafx.application.Platform;
 import javafx.beans.property.SimpleObjectProperty;
 import javafx.beans.property.SimpleStringProperty;
@@ -25,10 +18,6 @@ import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
-import javafx.scene.image.Image;
-import javafx.scene.image.PixelFormat;
-import javafx.scene.image.WritableImage;
-import javafx.scene.image.WritablePixelFormat;
 import javafx.scene.input.ContextMenuEvent;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
@@ -40,8 +29,6 @@ import javafx.util.Callback;
 import org.controlsfx.control.SegmentedButton;
 
 import java.io.*;
-import java.nio.IntBuffer;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
@@ -85,9 +72,7 @@ public class DiffUi extends Application {
     private Consumer<TreeItem<Item>> onFilesChangedAction = t -> {};
 
     private Stage primaryStage;
-    private PreviewNode previewLocal;
-    private PreviewNode previewRemote;
-    private PreviewNode previewDiff;
+    private DefCompareView preview;
     private TreeItem<Item> rootItem;
     private WatchService watchService;
 
@@ -207,18 +192,10 @@ public class DiffUi extends Application {
 
             VBox lastFiles = files(root);
             lastFiles.setPrefWidth(600);
-            previewLocal = preview();
-            previewLocal.setAlignment(Pos.CENTER);
-            previewRemote = preview();
-            previewRemote.setAlignment(Pos.CENTER);
-            previewDiff = preview();
-            previewRemote.setAlignment(Pos.CENTER);
-            VBox previews = new VBox(
-                    withLabel(previewLocal, "Preview A"),
-                    withLabel(previewRemote, "Perview B"),
-                    withLabel(previewDiff, "Perview Diff")
-                    );
-            ScrollPane pane = new ScrollPane(previews);
+            preview = new DefCompareView();
+            preview.setPadding(new Insets(4, 4, 2, 4));
+            preview.start();
+            ScrollPane pane = new ScrollPane(preview);
             pane.setPrefWidth(400);
             SplitPane box = new SplitPane(lastFiles, pane);
             box.setDividerPosition(0, 0.666);
@@ -870,20 +847,20 @@ public class DiffUi extends Application {
                 validate.setOnAction(event -> applyToLeafs(getTreeItem() == null ? rootItem : getTreeItem(), item -> {
                     String name = item.local.path.getFileName().toString().toLowerCase();
                     if (name.endsWith(".def")) {
-                        ImgFilesUtils.validateDefNames(item.local.path, skipFrames);
-                        ImgFilesUtils.validateDefColors(item.local.path);
+                        //ImgFilesUtils.validateDefNames(item.local.path, skipFrames);
+                        //ImgFilesUtils.validateDefColors(item.local.path);
                         //ImgFilesUtils.validateDefSpecColors(item.local.path);
                     } else if (name.endsWith(".d32")) {
-                        ImgFilesUtils.validateD32Colors(item.local.path);
+                        //ImgFilesUtils.validateD32Colors(item.local.path);
                     } else if (name.endsWith(".p32")) {
-                        ImgFilesUtils.validateP32Colors(item.local.path);
+                        //ImgFilesUtils.validateP32Colors(item.local.path);
                     } else if (name.endsWith(".lod")) {
                         try {
                             LodFile lod = LodFile.load(item.local.path);
                             for (LodFile.SubFileMeta subFile : lod.subFiles) {
                                 if (subFile.nameAsString.toLowerCase().endsWith(".def")) {
                                     Path path = item.local.path.resolveSibling(item.local.path.getFileName() + "?" + subFile.nameAsString);
-                                    ImgFilesUtils.validateDefSpecColors(path);
+                                    //ImgFilesUtils.validateDefSpecColors(path);
                                 }
                             }
                         } catch (IOException e) {
@@ -895,16 +872,16 @@ public class DiffUi extends Application {
                 fixDefNaming.setOnAction(event -> applyToLeafs(getTreeItem(), item -> {
                     String name = item.local.path.getFileName().toString().toLowerCase();
                     if (name.endsWith(".def")) {
-                        ImgFilesUtils.fixDefNames(item.local.path, skipFrames);
+                        //ImgFilesUtils.fixDefNames(item.local.path, skipFrames);
                     }
                 }));
                 MenuItem fixColors = new MenuItem("Fix d32/p32 alpha colors");
                 fixColors.setOnAction(event -> applyToLeafs(getTreeItem() == null ? rootItem : getTreeItem(), item -> {
                     String name = item.local.path.getFileName().toString().toLowerCase();
                     if (name.endsWith(".d32")) {
-                        ImgFilesUtils.fixD32Colors(item.local.path);
+                        //ImgFilesUtils.fixD32Colors(item.local.path);
                     } else if (name.endsWith(".p32")) {
-                        ImgFilesUtils.fixP32Colors(item.local.path);
+                        //ImgFilesUtils.fixP32Colors(item.local.path);
                     }
                 }));
                 setContextMenu(new ContextMenu(validate, fixDefNaming, fixColors));
@@ -930,9 +907,9 @@ public class DiffUi extends Application {
                                     if (itemName.endsWith(".lod")) {
                                         expandLod(item, treeItem);
                                     } else if (itemName.endsWith(".d32")) {
-                                        unpackD32(item);
+                                        //unpackD32(item);
                                     } else if (itemName.endsWith(".def")) {
-                                        unpackDef(item);
+                                        //unpackDef(item);
                                     }
                                 }
                                 e.consume();
@@ -950,7 +927,7 @@ public class DiffUi extends Application {
                                     }
                                     e.consume();
                                 } else if (e.getClickCount() == 2) {
-                                    packDef(item);
+                                    //packDef(item);
                                     e.consume();
                                 }
                             });
@@ -982,49 +959,6 @@ public class DiffUi extends Application {
         list.setFixedCellSize(20);
         list.setColumnResizePolicy(CONSTRAINED_RESIZE_POLICY);
         return list;
-    }
-
-    private void packDef(Item item) {
-        try {
-            Path path = item.local.path;
-            String name = path.getFileName().toString();
-            Path output = path.resolveSibling(name.substring(1, name.length() - 1));
-            Properties properties = new Properties();
-            try (Reader reader = Files.newBufferedReader(path.resolve("def.cfg"), StandardCharsets.UTF_8)) {
-                properties.load(reader);
-            }
-
-            String format = properties.getProperty("a.format"); // d32
-            if (!format.equals("d32")) throw new RuntimeException(format + " is not supported yet");
-            int width = Integer.parseInt(properties.getProperty("a.width"));
-            int height = Integer.parseInt(properties.getProperty("a.height"));
-            int groupsCount = Integer.parseInt(properties.getProperty("a.groups"));
-
-            List<D32.GroupDescriptor> groups = new ArrayList<>(groupsCount);
-            Map<String, int[][]> loadedFrames = new HashMap<>();
-
-            for (int i = 0; i < groupsCount; i++) {
-                int framesCount = Integer.parseInt(properties.getProperty("group." + i + ".frames"));
-                int groupIndex = Integer.parseInt(properties.getProperty("group." + i + ".index"));
-                D32.GroupDescriptor group = new D32.GroupDescriptor(groupIndex);
-                for (int j = 0; j < framesCount; j++) {
-                    D32.FrameDescriptor frame = new D32.FrameDescriptor(
-                            properties.getProperty("group." + i + ".frame." + j + ".name"),
-                            Integer.parseInt(properties.getProperty("group." + i + ".frame." + j + ".type"))
-                    );
-                    String file = properties.getProperty("group." + i + ".frame." + j + ".file");
-                    loadedFrames.computeIfAbsent(frame.name, k -> ImgFilesUtils.loadD32Frame(path.resolve(file)));
-
-                    group.frameDescriptors.add(frame);
-                }
-                groups.add(group);
-            }
-
-            D32.pack(output, groups, loadedFrames);
-
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
-        }
     }
 
     private Path askForUnpack(Item item) throws IOException {
@@ -1088,7 +1022,7 @@ public class DiffUi extends Application {
         return item.local.path.resolveSibling("[" + item.local.path.getFileName() + "]");
     }
 
-    private void unpackD32(Item item) {
+    /*private void unpackD32(Item item) {
         Path path;
         try {
             path = askForUnpack(item);
@@ -1135,57 +1069,8 @@ public class DiffUi extends Application {
 
         Path p = item.local.path;
         ImgFilesUtils.processFile(p, null, buffer -> {
-            D32 d32 = new D32(p.toString(), buffer);
-            String[] groupNames;
-            if (d32.groups.size() >= 22) {
-                groupNames = new String[]{
-                        "Moving",
-                        "Mouse-Over",
-                        "Standing",
-                        "Getting-Hit",
-                        "Defend",
-                        "Death",
-                        "Unused-Death",
-                        "Turn-Left",
-                        "Turn-Right",
-                        "Turn-Left",
-                        "Turn-Right",
-                        "Attack-Up",
-                        "Attack-Straight",
-                        "Attack-Down",
-                        "Shoot-Up",
-                        "Shoot-Straight",
-                        "Shoot-Down",
-                        "2-Hex-Attack-Up",
-                        "2-Hex-Attack-Straight",
-                        "2-Hex-Attack-Down",
-                        "Start-Moving",
-                        "Stop-Moving",
-                };
-            } else if (d32.groups.size() >= 10) {
-                groupNames = new String[]{
-                        "Up",
-                        "Up-Right",
-                        "Right",
-                        "Down-Right",
-                        "Down",
-                        "Move-Up",
-                        "Move-Up-Right",
-                        "Move-Right",
-                        "Move-Down-Right",
-                        "Move-Down",
-                };
-            } else if (d32.groups.size() >= 5) {
-                groupNames = new String[]{
-                        "Standing",
-                        "Shuffle",
-                        "Failure",
-                        "Victory",
-                        "Cast-Spell",
-                };
-            } else {
-                groupNames = new String[]{};
-            }
+            D32 d32 = new D32(buffer);
+            String[] groupNames = ADef.groupNames(d32.groups().size());
 
             Map<Image, List<D32.Frame>> imageToFrames = new LinkedHashMap<>();
             Map<D32.Frame, Image> imageMap = ImgFilesUtils.loadD32(d32, true, true);
@@ -1338,52 +1223,7 @@ public class DiffUi extends Application {
             Path p = item.local.path;
             ImgFilesUtils.processFile(p, null, buffer -> {
                 Def def = new Def(p.toString(), buffer);
-                String[] groupNames = switch (def.type) {
-                    case 0x42 -> new String[]{
-                            "Moving",
-                            "Mouse-Over",
-                            "Standing",
-                            "Getting-Hit",
-                            "Defend",
-                            "Death",
-                            "Unused-Death",
-                            "Turn-Left",
-                            "Turn-Right",
-                            "Turn-Left",
-                            "Turn-Right",
-                            "Attack-Up",
-                            "Attack-Straight",
-                            "Attack-Down",
-                            "Shoot-Up",
-                            "Shoot-Straight",
-                            "Shoot-Down",
-                            "2-Hex-Attack-Up",
-                            "2-Hex-Attack-Straight",
-                            "2-Hex-Attack-Down",
-                            "Start-Moving",
-                            "Stop-Moving",
-                    };
-                    case 0x44 -> new String[]{
-                            "Up",
-                            "Up-Right",
-                            "Right",
-                            "Down-Right",
-                            "Down",
-                            "Move-Up",
-                            "Move-Up-Right",
-                            "Move-Right",
-                            "Move-Down-Right",
-                            "Move-Down",
-                    };
-                    case 0x49 -> new String[]{
-                            "Standing",
-                            "Shuffle",
-                            "Failure",
-                            "Victory",
-                            "Cast-Spell",
-                    };
-                    default -> new String[]{};
-                };
+                String[] groupNames = ADef.groupNames(def.groups.size());
 
                 Map<Image, List<Def.Frame>> imageToFrames = new LinkedHashMap<>();
                 Map<Def.Frame, Image> imageMap = ImgFilesUtils.loadDef(def);
@@ -1477,7 +1317,7 @@ public class DiffUi extends Application {
         }
 
         getHostServices().showDocument(path.toString());
-    }
+    }*/
 
     private void expandLod(Item item, TreeItem<Item> treeItem) {
         TreeSet<String> allResources = new TreeSet<>();
@@ -1724,7 +1564,7 @@ public class DiffUi extends Application {
         for (Path path : localPaths) {
             String name = path.getFileName().toString().toLowerCase();
             if (name.endsWith(".def")) {
-                ImgFilesUtils.validateDefNames(localPath.resolve(path), skipFrames);
+                //ImgFilesUtils.validateDefNames(localPath.resolve(path), skipFrames);
             } else if (name.endsWith(".lod")) {
 
             }
@@ -1735,14 +1575,12 @@ public class DiffUi extends Application {
         if (treeItem == null) {
             return;
         }
-        previewLocal.show(treeItem.getValue().local.path);
-        previewRemote.show(treeItem.getValue().remote.path);
-        previewDiff.show(treeItem.getValue().local.path, treeItem.getValue().remote.path);
+        preview.setImages(treeItem.getValue().local.path, treeItem.getValue().remote.path);
 
-        PreviewNode[] node = new PreviewNode[1];
+        DefCompareView[] node = new DefCompareView[1];
 
         MenuItem showIssues = new MenuItem("Show issues");
-        showIssues.setOnAction(a -> {
+        /*showIssues.setOnAction(a -> {
             node[0].postProcess(image -> {
                 int multiply = 8;
                 int width = (int) image.getWidth();
@@ -1777,23 +1615,20 @@ public class DiffUi extends Application {
                 }
                 return result;
             });
-        });
+        });*/
 
         MenuItem showFrame = new MenuItem("Show frame");
         showFrame.setOnAction(a -> {
             TextInputDialog dialog = new TextInputDialog("Frame number");
             Optional<String> result = dialog.showAndWait();
-            result.ifPresent(s -> node[0].showFrame(Integer.parseInt(s)));
+            //result.ifPresent(s -> node[0].showFrame(Integer.parseInt(s)));
         });
         ContextMenu menu = new ContextMenu(showIssues, showFrame);
 
         EventHandler<ContextMenuEvent> handler = e -> {
-            node[0] = (PreviewNode) e.getSource();
+            node[0] = (DefCompareView) e.getSource();
             menu.show(node[0], e.getScreenX(), e.getScreenY());
         };
-        previewLocal.setOnContextMenuRequested(handler);
-        previewRemote.setOnContextMenuRequested(handler);
-        previewDiff.setOnContextMenuRequested(handler);
     }
 
     public void applyToLeafs(TreeItem<Item> treeItem, Consumer<Item> consumer) {
@@ -1804,10 +1639,6 @@ public class DiffUi extends Application {
                 applyToLeafs(child, consumer);
             }
         }
-    }
-
-    private PreviewNode preview() {
-        return new PreviewNode();
     }
 
     private Pane withLabel(Node pane, String label) {

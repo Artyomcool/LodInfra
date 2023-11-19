@@ -1,116 +1,107 @@
 package com.github.artyomcool.lodinfra.h3common;
 
-import com.github.artyomcool.lodinfra.ui.ImgFilesUtils;
-
-import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.IntBuffer;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.*;
-import java.util.function.IntConsumer;
-import java.util.function.IntToLongFunction;
-import java.util.function.IntUnaryOperator;
+import java.util.HashSet;
+import java.util.Map;
 
-public class D32 {
+public class D32 extends DefInfo {
 
-    public final ByteBuffer buffer;
+    public static final int TYPE = 0x46323344;  // D32F in LE
 
-    public final int type;
-    public final int version;
-    public final int fullWidth;
-    public final int fullHeight;
+    public static DefInfo load(ByteBuffer buffer) {
+        DefInfo def = new DefInfo();
+        def.type = buffer.getInt();
+        int version = buffer.getInt();
+        int headerSize = buffer.getInt();
+        def.fullWidth = buffer.getInt();
+        def.fullHeight = buffer.getInt();
 
-    public final List<Group> groups;
+        int activeGroupsCount = buffer.getInt();
+        int additionalHeaderSize = buffer.getInt();
+        int allGroupsCount = buffer.getInt();
 
-    public boolean changed;
+        int position = buffer.position();
+        for (int i = 0; i < activeGroupsCount; i++) {
+            buffer.position(position);
 
-    public static D32 pack(Path path, List<GroupDescriptor> groups, Map<String, int[][]> framesData) throws IOException {
-        class PackedFrame {
-            int[][] data;
+            int groupHeaderSize = buffer.getInt();
+            int groupIndex = buffer.getInt();
+            int framesCount = buffer.getInt();
 
-            int width;
-            int height;
+            int additionalGroupHeaderSize = buffer.getInt();
 
-            int nonZeroColorWidth;
-            int nonZeroColorHeight;
-            int nonZeroColorLeft;
-            int nonZeroColorTop;
+            DefInfo.Group group = new DefInfo.Group(def);
+            group.groupIndex = groupIndex;
+
+            String[] names = new String[framesCount];
+            byte[] name = new byte[13];
+            for (int j = 0; j < framesCount; j++) {
+                buffer.get(name);
+                try {
+                    int q = 0;
+                    while (name[q] != 0) {
+                        q++;
+                    }
+                    names[j] = new String(name, 0, q);
+                } catch (IndexOutOfBoundsException e) {
+                    names[j] = new String(name);
+                }
+            }
+
+            position = buffer.position();
+            for (int j = 0; j < framesCount; j++) {
+                int offset = buffer.getInt(position + j * 4);
+                DefInfo.Frame frame = new DefInfo.Frame(group);
+                frame.name = names[j];
+                frame.frameDrawType = buffer.getInt(offset + 36);
+                frame.data = () -> {
+                    buffer.position(offset);
+
+                    int frameHeaderSize = buffer.getInt();
+                    int imageSize = buffer.getInt();
+
+                    int fullWidth = buffer.getInt();
+                    int fullHeight = buffer.getInt();
+
+                    int width = buffer.getInt();
+                    int height = buffer.getInt();
+                    int x = buffer.getInt();
+                    int y = buffer.getInt();
+
+                    int frameInfoSize = buffer.getInt();
+                    int frameDrawType = buffer.getInt();
+
+                    int[][] image = new int[fullHeight][fullWidth];
+                    for (int yy = height + y - 1; yy >= y; yy--) {
+                        for (int xx = x; xx < x + width; xx++) {
+                            image[yy][xx] = buffer.getInt();
+                        }
+                    }
+                    return image;
+                };
+                group.frames.add(frame);
+            }
+            position += framesCount * 4;
+
+            def.groups.add(group);
         }
+        return def;
+    }
 
-        class HashedArray {
-            final int[][] data;
-            final int hash;
-
-            HashedArray(int[][] data) {
-                this.data = data;
-                this.hash = Arrays.deepHashCode(data);
-            }
-
-            @Override
-            public boolean equals(Object o) {
-                if (this == o) return true;
-                if (o == null || getClass() != o.getClass()) return false;
-
-                HashedArray that = (HashedArray) o;
-                return Arrays.deepEquals(data, that.data);
-            }
-
-            @Override
-            public int hashCode() {
-                return hash;
-            }
-        }
+    public static ByteBuffer pack(DefInfo def, Map<DefInfo.Frame, FrameInfo> links) {
         int maxIndex = 0;
-        for (GroupDescriptor group : groups) {
-            maxIndex = Math.max(group.index, maxIndex);
+        for (Group group : def.groups) {
+            maxIndex = Math.max(maxIndex, group.groupIndex);
         }
 
-        Map<String, PackedFrame> result = new HashMap<>();
-        Map<HashedArray, int[][]> rehash = new HashMap<>();
-        int maxWidth = 0;
-        int maxHeight = 0;
-
-        for (Map.Entry<String, int[][]> entry : framesData.entrySet()) {
-            String key = entry.getKey();
-            int[][] value = entry.getValue();
-            ImgFilesUtils.Box box = ImgFilesUtils.calculateTransparent(value);
-
-            int[][] data = new int[box.bottom - box.top + 1][box.right - box.left + 1];
-            for (int y = 0, fy = box.top; y < data.length; y++, fy++) {
-                int[] dstLine = data[y];
-                int[] srcLine = value[fy];
-
-                System.arraycopy(srcLine, box.left, dstLine, 0, dstLine.length);
-            }
-
-            HashedArray ha = new HashedArray(data);
-            int[][] old = rehash.putIfAbsent(ha, data);
-            if (old != null) {
-                data = old;
-            }
-
-            PackedFrame frame = new PackedFrame();
-            frame.data = data;
-            frame.width = value.length == 0 ? 0 : value[0].length;
-            frame.height = value.length;
-            frame.nonZeroColorLeft = box.left;
-            frame.nonZeroColorTop = box.top;
-            frame.nonZeroColorWidth = box.right - box.left + 1;
-            frame.nonZeroColorHeight = box.bottom - box.top + 1;
-            result.put(key, frame);
-
-            maxWidth = Math.max(frame.width, maxWidth);
-            maxHeight = Math.max(frame.height, maxHeight);
-        }
-
-        int type = 0x46323344;  // D32F in LE
+        int type = TYPE;
         int version = 1;
         int headerSize = 24;
-        int fullWidth = maxWidth;
-        int fullHeight = maxHeight;
-        int activeGroupCount = groups.size();
+        int fullWidth = def.fullWidth;
+        int fullHeight = def.fullHeight;
+        int activeGroupCount = def.groups.size();
 
         int additionalHeaderSize = 8;
         int allGroupsCount = maxIndex + 1;
@@ -119,9 +110,9 @@ public class D32 {
         int totalFrames = 0;
         int totalFramesDataSize = 0;
 
-        for (GroupDescriptor group : groups) {
+        for (Group group : def.groups) {
             int groupHeaderSize = 12;
-            int framesCount = group.frameDescriptors.size();
+            int framesCount = group.frames.size();
 
             int additionalGroupHeaderSize = 4;
 
@@ -129,8 +120,8 @@ public class D32 {
             totalFrames += framesCount;
         }
 
-        for (PackedFrame f : result.values()) {
-            totalFramesDataSize += f.nonZeroColorWidth * f.nonZeroColorHeight * 4;
+        for (FrameInfo f : new HashSet<>(links.values())) {
+            totalFramesDataSize += f.packedFrame.width * f.packedFrame.height * 4;
         }
 
         int framesHeaderSize = 40;
@@ -150,13 +141,11 @@ public class D32 {
                 .putInt(additionalHeaderSize)
                 .putInt(allGroupsCount);
 
-        Map<String, Integer> frames = new HashMap<>();
-
         int framesOffset = totalSizeBeforeFrames;
-        for (GroupDescriptor group : groups) {
+        for (Group group : def.groups) {
             int groupHeaderSize = 12;
-            int groupIndex = group.index;
-            int framesCount = group.frameDescriptors.size();
+            int groupIndex = group.groupIndex;
+            int framesCount = group.frames.size();
 
             int additionalGroupHeaderSize = 4;
 
@@ -166,261 +155,61 @@ public class D32 {
                     .putInt(framesCount)
                     .putInt(additionalGroupHeaderSize);
 
-            for (FrameDescriptor frameDescriptor : group.frameDescriptors) {
-                byte[] name = Arrays.copyOf(frameDescriptor.name.getBytes(), 12);
-                buffer.put(name);
-                buffer.put((byte) 0);
+            for (Frame f : group.frames) {
+                putFrameName(buffer, links.get(f).name);
             }
 
-            for (FrameDescriptor frameDescriptor : group.frameDescriptors) {
-                PackedFrame packedFrame = result.get(frameDescriptor.name);
-                Integer frame = frames.get(frameDescriptor.name);
-                if (frame == null) {
-                    frames.put(frameDescriptor.name, framesOffset);
+            for (Frame f : group.frames) {
+                FrameInfo info = links.get(f);
+                if (info.offset == -1) {
+                    info.offset = framesOffset;
                     buffer.putInt(framesOffset);
                     int backup = buffer.position();
                     buffer.position(framesOffset);
 
                     int frameHeaderSize = 40;
-                    int imageSize = packedFrame.nonZeroColorWidth * packedFrame.nonZeroColorHeight * 4;
+                    int imageSize = info.packedFrame.width * info.packedFrame.height * 4;
 
-                    int width = packedFrame.width;
-                    int height = packedFrame.height;
+                    int fw = info.packedFrame.fullWidth;
+                    int fh = info.packedFrame.fullHeight;
 
-                    int nonZeroColorWidth = packedFrame.nonZeroColorWidth;
-                    int nonZeroColorHeight = packedFrame.nonZeroColorHeight;
-                    int nonZeroColorLeft = packedFrame.nonZeroColorLeft;
-                    int nonZeroColorTop = packedFrame.nonZeroColorTop;
+                    int width = info.packedFrame.width;
+                    int height = info.packedFrame.height;
+                    int x = info.packedFrame.x;
+                    int y = info.packedFrame.y;
 
                     int frameInfoSize = 8;
-                    int frameDrawType = frameDescriptor.frameDrawType;
+                    int frameDrawType = info.packedFrame.drawType;
 
                     buffer
                             .putInt(frameHeaderSize)
                             .putInt(imageSize)
+                            .putInt(fw)
+                            .putInt(fh)
                             .putInt(width)
                             .putInt(height)
-                            .putInt(nonZeroColorWidth)
-                            .putInt(nonZeroColorHeight)
-                            .putInt(nonZeroColorLeft)
-                            .putInt(nonZeroColorTop)
+                            .putInt(x)
+                            .putInt(y)
                             .putInt(frameInfoSize)
                             .putInt(frameDrawType);
 
                     IntBuffer intBuffer = buffer.asIntBuffer();
-                    int[][] d = packedFrame.data;
+                    int[][] d = info.packedFrame.data;
                     for (int i = d.length - 1; i >= 0; i--) {
                         int[] scanline = d[i];
-                        intBuffer.put(scanline);
+                        intBuffer.put(scanline, x, width);
                     }
 
                     framesOffset = buffer.position() + intBuffer.position() * 4;
                     buffer.position(backup);
                 } else {
-                    buffer.putInt(frame);
+                    buffer.putInt(info.offset);
                 }
-            }
-
-            totalSizeBeforeFrames += groupHeaderSize + additionalGroupHeaderSize + framesCount * (13 + 4);
-            totalFrames += framesCount;
-            for (FrameDescriptor frame : group.frameDescriptors) {
-                PackedFrame f = result.get(frame.name);
-                totalFramesDataSize += f.width * f.height * 4;
             }
         }
 
         buffer.position(0);
         buffer.limit(totalSize);
-
-        Files.write(path, data);
-        return new D32(path.toString(), buffer);
+        return buffer;
     }
-
-    public D32(String path, ByteBuffer buffer) {
-        this.buffer = buffer = buffer.duplicate().order(ByteOrder.LITTLE_ENDIAN);
-
-        type = buffer.getInt();
-        version = buffer.getInt();
-        int headerSize = buffer.getInt();
-        fullWidth = buffer.getInt();
-        fullHeight = buffer.getInt();
-        int activeGroupsCount = buffer.getInt();
-        int additionalHeaderSize = buffer.getInt();
-        int allGroupsCount = buffer.getInt();
-
-        List<Group> groups = new ArrayList<>(activeGroupsCount);
-
-        int position = buffer.position();
-        for (int i = 0; i < activeGroupsCount; i++) {
-            buffer.position(position);
-
-            int groupHeaderSize = buffer.getInt();
-            int groupIndex = buffer.getInt();
-            int framesCount = buffer.getInt();
-
-            int additionalGroupHeaderSize = buffer.getInt();
-
-            Group group = new Group(groupIndex);
-
-            String[] names = new String[framesCount];
-            byte[] nbuf = new byte[13];
-            for (int f = 0; f < framesCount; f++) {
-                buffer.get(nbuf);
-                int q = 0;
-                for (; q < 12; q++) {
-                    if (nbuf[q] == 0) {
-                        break;
-                    }
-                }
-                names[f] = new String(nbuf, 0, q);
-            }
-
-            position = buffer.position();
-            for (int j = 0; j < framesCount; j++) {
-                int offset = buffer.getInt(position + j * 4);
-
-                buffer.position(offset);
-
-                int frameHeaderSize = buffer.getInt();
-                int imageSize = buffer.getInt();
-
-                int width = buffer.getInt();
-                int height = buffer.getInt();
-
-                int nonZeroColorWidth = buffer.getInt();
-                int nonZeroColorHeight = buffer.getInt();
-                int nonZeroColorLeft = buffer.getInt();
-                int nonZeroColorTop = buffer.getInt();
-
-                int frameInfoSize = buffer.getInt();
-                int frameDrawType = buffer.getInt();
-
-                Frame frame = new Frame(group, offset, names[j], j, frameDrawType);
-                group.frames.add(frame);
-            }
-            position += framesCount * 4;
-
-            groups.add(group);
-        }
-
-        this.groups = groups;
-    }
-
-    public int[][] decode(Frame frame) {
-        return decode(frame, true);
-    }
-
-    public int[][] decode(Frame frame, boolean useOffsets) {
-        buffer.position(frame.offset);
-
-        int frameHeaderSize = buffer.getInt();
-        int imageSize = buffer.getInt();
-
-        int width = buffer.getInt();
-        int height = buffer.getInt();
-
-        int nonZeroColorWidth = buffer.getInt();
-        int nonZeroColorHeight = buffer.getInt();
-        int nonZeroColorLeft = buffer.getInt();
-        int nonZeroColorTop = buffer.getInt();
-
-        int frameInfoSize = buffer.getInt();
-        int frameDrawType = buffer.getInt();
-
-        if (useOffsets) {
-            int[][] image = new int[height][width];
-
-            for (int y = nonZeroColorHeight + nonZeroColorTop - 1; y >= nonZeroColorTop; y--) {
-                for (int x = nonZeroColorLeft; x < nonZeroColorLeft + nonZeroColorWidth; x++) {
-                    image[y][x] = buffer.getInt();
-                }
-            }
-            return image;
-        } else {
-            int[][] image = new int[nonZeroColorHeight][nonZeroColorWidth];
-
-            for (int y = nonZeroColorHeight - 1; y >= 0; y--) {
-                for (int x = 0; x < nonZeroColorWidth; x++) {
-                    image[y][x] = buffer.getInt();
-                }
-            }
-            return image;
-        }
-
-    }
-
-    public void changeColors(Frame frame, IntUnaryOperator changeColor) {
-        buffer.position(frame.offset);
-
-        int frameHeaderSize = buffer.getInt();
-        int imageSize = buffer.getInt();
-
-        int width = buffer.getInt();
-        int height = buffer.getInt();
-
-        int nonZeroColorWidth = buffer.getInt();
-        int nonZeroColorHeight = buffer.getInt();
-        int nonZeroColorLeft = buffer.getInt();
-        int nonZeroColorTop = buffer.getInt();
-
-        int frameInfoSize = buffer.getInt();
-        int frameDrawType = buffer.getInt();
-
-        for (int y = nonZeroColorHeight + nonZeroColorTop - 1; y >= nonZeroColorTop; y--) {
-            for (int x = nonZeroColorLeft; x < nonZeroColorLeft + nonZeroColorWidth; x++) {
-                int position = buffer.position();
-                int originalColor = buffer.getInt();
-                int changedColor = changeColor.applyAsInt(originalColor);
-                if (originalColor != changedColor) {
-                    buffer.putInt(position, changedColor);
-                    changed = true;
-                }
-            }
-        }
-    }
-
-    public static class Group {
-        public final int index;
-        public final List<Frame> frames = new ArrayList<>();
-
-        public Group(int index) {
-            this.index = index;
-        }
-    }
-
-    public static class GroupDescriptor {
-        public final int index;
-        public final List<FrameDescriptor> frameDescriptors = new ArrayList<>();
-
-        public GroupDescriptor(int index) {
-            this.index = index;
-        }
-    }
-
-    public static class FrameDescriptor {
-        public final String name;
-        public final int frameDrawType;
-
-        public FrameDescriptor(String name, int frameDrawType) {
-            this.name = name;
-            this.frameDrawType = frameDrawType;
-        }
-    }
-
-    public static class Frame {
-        public final Group group;
-        public final int offset;
-        public final String name;
-        public final int index;
-        public final int frameDrawType;
-
-        public Frame(Group group, int offset, String name, int index, int frameDrawType) {
-            this.group = group;
-            this.offset = offset;
-            this.name = name;
-            this.index = index;
-            this.frameDrawType = frameDrawType;
-        }
-    }
-
 }

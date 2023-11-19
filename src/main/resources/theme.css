@@ -93,11 +93,16 @@
     -fx-indent: 18px;
 }
 
-.tree-table-row-cell:even {
+.tree-cell, .list-cell {
+    -fx-font-family: monospace;
+    -fx-padding: 2;
+ }
+
+.tree-table-row-cell:even, .tree-cell:even, .list-cell:even {
     -fx-background-color: rgb(245, 245, 250);
 }
 
-.tree-table-row-cell:selected {
+.tree-table-row-cell:selected, .tree-cell:selected, .list-cell:selected {
     -fx-background-color: #F0C080;
 }
 
