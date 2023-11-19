@@ -87,9 +87,9 @@ public class Bmp extends DefInfo {
         } else {
             int[] palette = new int[colorsUsed];
             for (int i = 0; i < colorsUsed; i++) {
-                int b = data.get();
-                int g = data.get();
-                int r = data.get();
+                int b = data.get() & 0xff;
+                int g = data.get() & 0xff;
+                int r = data.get() & 0xff;
                 data.get();
 
                 palette[i] = 0xff000000 | r << 16 | g << 8 | b;
