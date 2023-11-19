@@ -302,7 +302,7 @@ public class ImgFilesUtils {
         };
     }
 
-    interface Processor<R> {
+    public interface Processor<R> {
         R process(ByteBuffer buffer) throws IOException;
         default R process(FileChannel channel, ByteBuffer buffer) throws IOException {
             return process(buffer);

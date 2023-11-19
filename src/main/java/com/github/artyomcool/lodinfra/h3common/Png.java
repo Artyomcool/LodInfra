@@ -6,7 +6,6 @@ import ar.com.hjg.pngj.chunks.PngChunkPLTE;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
-import java.util.Map;
 
 public class Png extends DefInfo {
 
@@ -55,7 +54,8 @@ public class Png extends DefInfo {
         return def;
     }
 
-    public static ByteBuffer pack(DefInfo def, Map<Frame, FrameInfo> links) {
+    public static ByteBuffer pack(Frame frame) {
+        DefInfo def = frame.group.def;
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         boolean alpha = def.type == D32.TYPE || def.type == P32.TYPE;
         ImageInfo header = new ImageInfo(def.fullWidth, def.fullHeight, 8, alpha, false, def.palette != null);

@@ -1,6 +1,13 @@
 package com.github.artyomcool.lodinfra.h3common;
 
+import com.github.artyomcool.lodinfra.ui.ImgFilesUtils;
+
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -97,6 +104,7 @@ public class DefInfo {
     public int fullWidth;
     public int fullHeight;
     public int[] palette;
+    public Path path;
 
     public final List<Group> groups = new ArrayList<>();
 
@@ -127,6 +135,22 @@ public class DefInfo {
         public Frame(Group group) {
             this.group = group;
         }
+    }
+
+    public static DefInfo load(Path path) {
+        return ImgFilesUtils.processFile(path, null, buffer -> {
+            try {
+                byte[] bytes = Files.readAllBytes(path);
+                DefInfo def = DefInfo.load(ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN));
+                if (def != null) {
+                    def.path = path;
+                }
+                return def;
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
+
+        });
     }
 
     public static DefInfo load(ByteBuffer buffer) {

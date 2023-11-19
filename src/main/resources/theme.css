@@ -110,3 +110,17 @@
     -fx-margin: 2px;
     -fx-base: rgb(240, 250, 255);
 }
+
+.jfx-slider .track,
+.jfx-slider:vertical .track {
+    -fx-background-color: -jfx-default-track;
+    -fx-background-radius: 0;
+    -fx-background-insets: 0;
+    -fx-pref-width: 2px;
+    -fx-pref-height: 2px;
+}
+.jfx-slider .colored-track {
+    -fx-background-color: -jfx-default-thumb;
+    -fx-background-radius: 0;
+    -fx-background-insets: 0;
+}

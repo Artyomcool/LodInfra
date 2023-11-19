@@ -1,6 +1,9 @@
 package com.github.artyomcool.lodinfra.h3common;
 
 import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.util.HashMap;
+import java.util.Map;
 
 public class Pcx extends DefInfo {
 
@@ -83,6 +86,69 @@ public class Pcx extends DefInfo {
         frame.data = () -> result;
 
         return info;
+    }
+
+    public static ByteBuffer pack(Frame frame) {
+        DefInfo def = frame.group.def;
+        int[] palette = def.palette;
+        if (palette != null) {
+            int size = def.fullWidth * def.fullHeight;
+            ByteBuffer buffer = ByteBuffer.allocate(12 + 256 + size)
+                    .order(ByteOrder.LITTLE_ENDIAN);
+            buffer
+                    .putInt(size)
+                    .putInt(def.fullWidth)
+                    .putInt(def.fullHeight);
+
+            Map<Integer, Byte> paletteIndex = new HashMap<>();
+            for (int i = 0; i < palette.length; i++) {
+                int c = palette[i];
+                int r = (c >> 16) & 0xff;
+                int g = (c >> 8) & 0xff;
+                int b = c & 0xff;
+
+                buffer
+                        .put((byte) r)
+                        .put((byte) g)
+                        .put((byte) b);
+
+                paletteIndex.put(c, (byte)i);
+            }
+
+            int[][] pixels = frame.data.decodeFrame();
+            for (int y = 0; y < def.fullHeight; y ++) {
+                int[] scanline = pixels[y];
+                for (int x = 0; x < def.fullWidth; x++) {
+                    buffer.put(paletteIndex.get(scanline[x]));
+                }
+            }
+            return buffer;
+        } else {
+            int size = def.fullWidth * def.fullHeight * 3;
+            ByteBuffer buffer = ByteBuffer.allocate(12 + size)
+                    .order(ByteOrder.LITTLE_ENDIAN);
+            buffer
+                    .putInt(size)
+                    .putInt(def.fullWidth)
+                    .putInt(def.fullHeight);
+
+            int[][] pixels = frame.data.decodeFrame();
+            for (int y = 0; y < def.fullHeight; y ++) {
+                int[] scanline = pixels[y];
+                for (int x = 0; x < def.fullWidth; x++) {
+                    int c = scanline[x];
+                    int r = (c >> 16) & 0xff;
+                    int g = (c >> 8) & 0xff;
+                    int b = c & 0xff;
+
+                    buffer
+                            .put((byte) r)
+                            .put((byte) g)
+                            .put((byte) b);
+                }
+            }
+            return buffer;
+        }
     }
 
 }

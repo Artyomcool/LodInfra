@@ -43,7 +43,9 @@ public class P32 extends Def {
         return def;
     }
 
-    public static ByteBuffer pack(DefInfo def, Map<Frame, FrameInfo> links) {
+    public static ByteBuffer pack(Frame frame) {
+        DefInfo def = frame.group.def;
+
         int type = TYPE;
         int version = 0;
         int headerSize = 32;

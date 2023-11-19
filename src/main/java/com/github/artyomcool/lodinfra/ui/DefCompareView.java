@@ -2,29 +2,33 @@ package com.github.artyomcool.lodinfra.ui;
 
 import com.github.artyomcool.lodinfra.h3common.D32;
 import com.github.artyomcool.lodinfra.h3common.DefInfo;
+import com.jfoenix.controls.JFXButton;
 import com.jfoenix.controls.JFXCheckBox;
 import javafx.animation.AnimationTimer;
+import javafx.application.Platform;
+import javafx.geometry.Insets;
 import javafx.geometry.Pos;
+import javafx.scene.Group;
+import javafx.scene.Node;
 import javafx.scene.control.Label;
 import javafx.scene.control.TextField;
-import javafx.scene.image.Image;
-import javafx.scene.image.WritableImage;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
+import javafx.scene.paint.Color;
+import javafx.scene.shape.SVGPath;
 
-import java.io.IOException;
-import java.io.UncheckedIOException;
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 
 import static com.github.artyomcool.lodinfra.ui.ImgFilesUtils.colorDifference;
 
 public class DefCompareView extends VBox {
     private final AnimationTimer timer = new AnimationTimer() {
         long prev = 0;
+
         @Override
         public void handle(long now) {
             String animationText = animationSpeed.getText();
@@ -49,15 +53,24 @@ public class DefCompareView extends VBox {
     private final DefControl allControl = new DefControl(diff, local, remote);
     private final JFXCheckBox lockPreviews = new JFXCheckBox("Lock previews");
     private final TextField animationSpeed = new TextField("200");
+
     {
         animationSpeed.setPrefColumnCount(3);
     }
+
+    private final JFXButton expand = new JFXButton(null, expandIcon());
+
+    {
+        expand.setPadding(new Insets(4, 4, 4, 4));
+    }
+
+    private List<Boolean> changes = new ArrayList<>();
 
     public DefCompareView() {
         setSpacing(2);
         HBox speed = new HBox(new Label("Frame rate: "), animationSpeed);
         speed.setAlignment(Pos.CENTER_LEFT);
-        HBox top = new HBox(8, lockPreviews, speed);
+        HBox top = new HBox(8, lockPreviews, speed, expand);
         top.setAlignment(Pos.CENTER_LEFT);
         getChildren().setAll(
                 top,
@@ -87,7 +100,10 @@ public class DefCompareView extends VBox {
     public void setImages(Path local, Path remote) {
         DefInfo localDef = load(local);
         DefInfo remoteDef = load(remote);
-        DefInfo diffDef = makeDiff(localDef, remoteDef);
+        changes = new ArrayList<>();
+        DefInfo diffDef = makeDiff(localDef, remoteDef, changes);
+        diffControl.setHeatmap(changes);
+        allControl.setHeatmap(changes);
 
         this.local.setDef(localDef);
         this.remote.setDef(remoteDef);
@@ -123,17 +139,13 @@ public class DefCompareView extends VBox {
         String fileName = file.getFileName().toString().toLowerCase();
         for (String ext : Arrays.asList("png", "bmp", "def", "p32", "d32", "pcx")) {
             if (fileName.endsWith("." + ext)) {
-                try {
-                    return DefInfo.load(ByteBuffer.wrap(Files.readAllBytes(file)).order(ByteOrder.LITTLE_ENDIAN));
-                } catch (IOException e) {
-                    throw new UncheckedIOException(e);
-                }
+                return DefInfo.load(file);
             }
         }
         return null;
     }
 
-    private DefInfo makeDiff(DefInfo one, DefInfo two) {
+    private DefInfo makeDiff(DefInfo one, DefInfo two, List<Boolean> outChanges) {
         if (one == null) {
             one = new DefInfo();
         }
@@ -177,6 +189,8 @@ public class DefCompareView extends VBox {
                 DefInfo.Frame oneFrame = oneFrames > j ? oneGroup.frames.get(j) : null;
                 DefInfo.Frame twoFrame = twoFrames > j ? twoGroup.frames.get(j) : null;
                 DefInfo.Frame diffFrame = new DefInfo.Frame(group);
+                int frameIndex = outChanges.size();
+                outChanges.add(false);
                 diffFrame.data = () -> {
                     int[][] onePixels = oneFrame == null ? new int[0][0] : oneFrame.data.decodeFrame();
                     int[][] twoPixels = twoFrame == null ? new int[0][0] : twoFrame.data.decodeFrame();
@@ -195,6 +209,9 @@ public class DefCompareView extends VBox {
                                     oneScan.length > x ? oneScan[x] : 0,
                                     twoScan.length > x ? twoScan[x] : 0
                             );
+                            if (d != 0) {
+                                Platform.runLater(() -> notifyChanges(outChanges, frameIndex));
+                            }
                             if (d == 0) {
                                 d = 0xff00ffff;
                             } else if (d < 0x10) {
@@ -220,6 +237,25 @@ public class DefCompareView extends VBox {
             result.groups.add(group);
         }
         return result;
+    }
+
+    private void notifyChanges(List<Boolean> changes, int frameIndex) {
+        if (this.changes != changes) {
+            return;
+        }
+        changes.set(frameIndex, true);
+        diffControl.setHeatmap(changes);
+        allControl.setHeatmap(changes);
+    }
+
+    private static Node expandIcon() {
+        String d = "M175.445,336.555c-5-5.009-13.099-5.009-18.099,0L25.6,468.301V396.8c0-7.074-5.726-12.8-12.8-12.8 C5.726,384,0,389.726,0,396.8v102.4c0,7.074,5.726,12.8,12.8,12.8h102.4c7.074,0,12.8-5.726,12.8-12.8 c0-7.074-5.726-12.8-12.8-12.8H43.699l131.746-131.746C180.446,349.653,180.446,341.555,175.445,336.555z M499.2,0H396.8C389.726,0,384,5.726,384,12.8c0,7.074,5.726,12.8,12.8,12.8h71.492L336.555,157.346 c-5.001,5.001-5.001,13.099,0,18.099c5,5.001,13.099,5.001,18.099,0L486.4,43.699V115.2c0,7.074,5.726,12.8,12.8,12.8 c7.074,0,12.8-5.726,12.8-12.8V12.8C512,5.726,506.274,0,499.2,0z";
+        SVGPath path = new SVGPath();
+        path.setFill(Color.grayRgb(0x60));
+        path.setContent(d);
+        path.setScaleX(1d / 32);
+        path.setScaleY(1d / 32);
+        return new Group(path);
     }
 
 }

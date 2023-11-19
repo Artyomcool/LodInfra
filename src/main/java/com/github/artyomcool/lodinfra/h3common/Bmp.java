@@ -133,13 +133,13 @@ public class Bmp extends DefInfo {
         return def;
     }
 
-    public static ByteBuffer pack(DefInfo def, Map<Frame, FrameInfo> links) {
-        int[][] image = def.groups.get(0).frames.get(0).data.decodeFrame();
-        int[] palette = def.palette;
+    public static ByteBuffer pack(Frame frame) {
+        int[][] image = frame.data.decodeFrame();
+        int[] palette = frame.group.def.palette;
 
+        int width = frame.group.def.fullWidth;
+        int height = frame.group.def.fullHeight;
         if (palette == null) {
-            int width = def.fullWidth;
-            int height = def.fullHeight;
             int rowSize = (width * 3 + 3) / 4 * 4;  // 3 bytes per pixel in RGB888, round up to multiple of 4
             int imageSize = rowSize * height;
 
@@ -181,8 +181,6 @@ public class Bmp extends DefInfo {
             }
             return byteBuffer.flip();
         } else {
-            int width = def.fullWidth;
-            int height = def.fullHeight;
             int rowSize = (width + 3) / 4 * 4;  // 1 bytes per pixel in palette, round up to multiple of 4
             int imageSize = rowSize * height;
 
