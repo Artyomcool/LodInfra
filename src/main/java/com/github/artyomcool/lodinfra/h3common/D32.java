@@ -1,5 +1,6 @@
 package com.github.artyomcool.lodinfra.h3common;
 
+import java.nio.Buffer;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.IntBuffer;
@@ -53,34 +54,32 @@ public class D32 extends DefInfo {
             position = buffer.position();
             for (int j = 0; j < framesCount; j++) {
                 int offset = buffer.getInt(position + j * 4);
-                DefInfo.Frame frame = new DefInfo.Frame(group);
-                frame.name = names[j];
-                frame.frameDrawType = buffer.getInt(offset + 36);
-                frame.data = () -> {
-                    buffer.position(offset);
+                DefInfo.Frame frame = new DefInfo.Frame(group, () -> {
+                    ByteBuffer bf = buffer.duplicate().order(ByteOrder.LITTLE_ENDIAN).position(offset);
+                    int frameHeaderSize = bf.getInt();
+                    int imageSize = bf.getInt();
 
-                    int frameHeaderSize = buffer.getInt();
-                    int imageSize = buffer.getInt();
+                    int fullWidth = bf.getInt();
+                    int fullHeight = bf.getInt();
 
-                    int fullWidth = buffer.getInt();
-                    int fullHeight = buffer.getInt();
+                    int width = bf.getInt();
+                    int height = bf.getInt();
+                    int x = bf.getInt();
+                    int y = bf.getInt();
 
-                    int width = buffer.getInt();
-                    int height = buffer.getInt();
-                    int x = buffer.getInt();
-                    int y = buffer.getInt();
-
-                    int frameInfoSize = buffer.getInt();
-                    int frameDrawType = buffer.getInt();
+                    int frameInfoSize = bf.getInt();
+                    int frameDrawType = bf.getInt();
 
                     int[][] image = new int[fullHeight][fullWidth];
                     for (int yy = height + y - 1; yy >= y; yy--) {
                         for (int xx = x; xx < x + width; xx++) {
-                            image[yy][xx] = buffer.getInt();
+                            image[yy][xx] = bf.getInt();
                         }
                     }
                     return image;
-                };
+                });
+                frame.name = names[j];
+                frame.frameDrawType = buffer.getInt(offset + 36);
                 group.frames.add(frame);
             }
             position += framesCount * 4;

@@ -54,24 +54,21 @@ public class Def extends DefInfo {
             group.groupIndex = groupIndex;
 
             for (int j = 0; j < framesCount; j++) {
-                DefInfo.Frame frame = new DefInfo.Frame(group);
                 int offset = offsets[j];
-                frame.name = names[j];
-                frame.compression = buffer.getInt(offset + 4);
-                frame.data = () -> {
-                    buffer.position(offset);
+                FrameData data = () -> {
+                    ByteBuffer buf = buffer.duplicate().order(ByteOrder.LITTLE_ENDIAN).position(offset);
 
-                    int size = buffer.getInt();
-                    int compression = buffer.getInt();
-                    int fullWidth = buffer.getInt();
-                    int fullHeight = buffer.getInt();
+                    int size = buf.getInt();
+                    int compression = buf.getInt();
+                    int fullWidth = buf.getInt();
+                    int fullHeight = buf.getInt();
 
-                    int width = buffer.getInt();
-                    int height = buffer.getInt();
-                    int x = buffer.getInt();
-                    int y = buffer.getInt();
+                    int width = buf.getInt();
+                    int height = buf.getInt();
+                    int x = buf.getInt();
+                    int y = buf.getInt();
 
-                    int start = buffer.position();
+                    int start = buf.position();
 
                     int xx = x;
                     int yy = y;
@@ -85,23 +82,23 @@ public class Def extends DefInfo {
                         case 0 -> {
                             for (int i1 = 0; i1 < height; i1++) {
                                 for (int j1 = 0; j1 < width; j1++) {
-                                    image[y + i1][x + j1] = palette[buffer.get() & 0xff];
+                                    image[y + i1][x + j1] = palette[buf.get() & 0xff];
                                 }
                             }
                         }
                         case 1 -> {
                             int[] offsets1 = new int[height];
                             for (int i1 = 0; i1 < offsets1.length; i1++) {
-                                offsets1[i1] = buffer.getInt() + start;
+                                offsets1[i1] = buf.getInt() + start;
                             }
                             for (int i1 : offsets1) {
-                                buffer.position(i1);
+                                buf.position(i1);
 
                                 for (int w = 0; w < width; ) {
-                                    int index = (buffer.get() & 0xff);
-                                    int count = (buffer.get() & 0xff) + 1;
+                                    int index = (buf.get() & 0xff);
+                                    int count = (buf.get() & 0xff) + 1;
                                     for (int j1 = 0; j1 < count; j1++) {
-                                        image[yy][xx] = index == 0xff ? palette[buffer.get() & 0xff] : SPEC_COLORS[index];
+                                        image[yy][xx] = index == 0xff ? palette[buf.get() & 0xff] : SPEC_COLORS[index];
                                         xx++;
                                     }
                                     w += count;
@@ -113,17 +110,17 @@ public class Def extends DefInfo {
                         case 2 -> {
                             int[] offsets1 = new int[height];
                             for (int i1 = 0; i1 < offsets1.length; i1++) {
-                                offsets1[i1] = (buffer.getShort() & 0xffff) + start;
+                                offsets1[i1] = (buf.getShort() & 0xffff) + start;
                             }
                             for (int i1 : offsets1) {
-                                buffer.position(i1);
+                                buf.position(i1);
 
                                 for (int w = 0; w < width; ) {
-                                    int b = buffer.get() & 0xff;
+                                    int b = buf.get() & 0xff;
                                     int index = b >> 5;
                                     int count = (b & 0x1f) + 1;
                                     for (int j1 = 0; j1 < count; j1++) {
-                                        image[yy][xx] = index == 0x7 ? palette[buffer.get() & 0xff] : SPEC_COLORS[index];
+                                        image[yy][xx] = index == 0x7 ? palette[buf.get() & 0xff] : SPEC_COLORS[index];
                                         xx++;
                                         if (xx >= x + width) {
                                             yy++;
@@ -137,19 +134,19 @@ public class Def extends DefInfo {
                         case 3 -> {
                             int[] offsets1 = new int[width * height / 32];
                             for (int i1 = 0; i1 < offsets1.length; i1++) {
-                                offsets1[i1] = (buffer.getShort() & 0xffff) + start;
+                                offsets1[i1] = (buf.getShort() & 0xffff) + start;
                             }
                             for (int i1 : offsets1) {
-                                buffer.position(i1);
+                                buf.position(i1);
 
                                 int left = 32;
                                 while (left > 0) {
-                                    int b = buffer.get() & 0xff;
+                                    int b = buf.get() & 0xff;
                                     int index = b >> 5;
                                     int count = (b & 0x1f) + 1;
 
                                     for (int j1 = 0; j1 < count; j1++) {
-                                        image[yy][xx] = index == 0x7 ? palette[buffer.get() & 0xff] : SPEC_COLORS[index];
+                                        image[yy][xx] = index == 0x7 ? palette[buf.get() & 0xff] : SPEC_COLORS[index];
                                         xx++;
                                         if (xx >= x + width) {
                                             yy++;
@@ -165,6 +162,9 @@ public class Def extends DefInfo {
 
                     return image;
                 };
+                DefInfo.Frame frame = new DefInfo.Frame(group, data);
+                frame.name = names[j];
+                frame.compression = buffer.getInt(offset + 4);
                 group.frames.add(frame);
             }
 

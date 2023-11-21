@@ -191,21 +191,21 @@ public class DiffUi extends Application {
             StackPane root = new StackPane();
 
             VBox lastFiles = files(root);
-            lastFiles.setPrefWidth(600);
             preview = new DefCompareView();
             preview.setPadding(new Insets(4, 4, 2, 4));
             preview.start();
             ScrollPane pane = new ScrollPane(preview);
-            pane.setPrefWidth(400);
+            pane.setPrefWidth(480);
+            pane.setFitToWidth(true);
             SplitPane box = new SplitPane(lastFiles, pane);
-            box.setDividerPosition(0, 0.666);
+            box.setDividerPosition(0, 0.6);
             root.getChildren().add(box);
 
             Scene scene = new Scene(root);
             scene.getStylesheets().add(getClass().getResource("/theme.css").toExternalForm());
 
-            primaryStage.setMinWidth(1024);
-            primaryStage.setMinHeight(800);
+            primaryStage.setWidth(1200);
+            primaryStage.setHeight(800);
             primaryStage.setScene(scene);
             primaryStage.show();
 

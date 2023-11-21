@@ -76,9 +76,8 @@ public class Bmp extends DefInfo {
             }
 
             Group group = new Group(def);
-            Frame frame = new Frame(group);
+            Frame frame = new Frame(group, () -> img);
             group.frames.add(frame);
-            frame.data = () -> img;
 
             def.type = Pcx.TYPE24;
             def.fullWidth = width;
@@ -119,9 +118,8 @@ public class Bmp extends DefInfo {
             }
 
             Group group = new Group(def);
-            Frame frame = new Frame(group);
+            Frame frame = new Frame(group, () -> img);
             group.frames.add(frame);
-            frame.data = () -> img;
 
             def.type = Pcx.TYPE8;
             def.fullWidth = width;
@@ -134,7 +132,7 @@ public class Bmp extends DefInfo {
     }
 
     public static ByteBuffer pack(Frame frame) {
-        int[][] image = frame.data.decodeFrame();
+        int[][] image = frame.decodeFrame();
         int[] palette = frame.group.def.palette;
 
         int width = frame.group.def.fullWidth;

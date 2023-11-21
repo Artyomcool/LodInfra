@@ -40,10 +40,8 @@ public class Pcx extends DefInfo {
         Group group = new Group(info);
         info.groups.add(group);
 
-        Frame frame = new Frame(group);
+        Frame frame = new Frame(group, () -> result);
         group.frames.add(frame);
-
-        frame.data = () -> result;
 
         return info;
     }
@@ -80,10 +78,8 @@ public class Pcx extends DefInfo {
         Group group = new Group(info);
         info.groups.add(group);
 
-        Frame frame = new Frame(group);
+        Frame frame = new Frame(group, () -> result);
         group.frames.add(frame);
-
-        frame.data = () -> result;
 
         return info;
     }
@@ -115,7 +111,7 @@ public class Pcx extends DefInfo {
                 paletteIndex.put(c, (byte)i);
             }
 
-            int[][] pixels = frame.data.decodeFrame();
+            int[][] pixels = frame.decodeFrame();
             for (int y = 0; y < def.fullHeight; y ++) {
                 int[] scanline = pixels[y];
                 for (int x = 0; x < def.fullWidth; x++) {
@@ -132,7 +128,7 @@ public class Pcx extends DefInfo {
                     .putInt(def.fullWidth)
                     .putInt(def.fullHeight);
 
-            int[][] pixels = frame.data.decodeFrame();
+            int[][] pixels = frame.decodeFrame();
             for (int y = 0; y < def.fullHeight; y ++) {
                 int[] scanline = pixels[y];
                 for (int x = 0; x < def.fullWidth; x++) {

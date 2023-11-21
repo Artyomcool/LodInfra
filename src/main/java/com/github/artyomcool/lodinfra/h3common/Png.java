@@ -46,8 +46,7 @@ public class Png extends DefInfo {
         }
 
         Group group = new Group(def);
-        Frame frame = new Frame(group);
-        frame.data = () -> pixels;
+        Frame frame = new Frame(group, () -> pixels);
         group.frames.add(frame);
         def.groups.add(group);
 
@@ -61,7 +60,7 @@ public class Png extends DefInfo {
         ImageInfo header = new ImageInfo(def.fullWidth, def.fullHeight, 8, alpha, false, def.palette != null);
         PngWriter pngWriter = new PngWriter(out, header);
 
-        int[][] pixels = def.groups.get(0).frames.get(0).data.decodeFrame();
+        int[][] pixels = def.groups.get(0).frames.get(0).decodeFrame();
         for (int y = 0; y < def.fullHeight; y++) {
             ImageLineByte line = new ImageLineByte(header);
             int[] scanline = pixels[y];

@@ -30,17 +30,16 @@ public class DefView extends ImageView {
     private Future<?> previousLoad = CompletableFuture.completedFuture(null);
     private Runnable onChanged = () -> {};
 
-    private final Map<DefInfo.Frame, Image> loaded = new HashMap<>();
+    private final Map<int[][], Image> loaded = new HashMap<>();
     private final List<DefInfo.Frame> frames = new ArrayList<>();
     private final List<Integer> frameIndexToFameGroup = new ArrayList<>();
     private final Map<Integer, Integer> frameGroupToFrameIndex = new HashMap<>();
-    private int frameIndex;
+    private int globalIndex;
 
     public void setDef(DefInfo def) {
         this.def = def;
 
-        frameIndex = 0;
-        loaded.clear();
+        globalIndex = 0;
 
         frames.clear();
         frameIndexToFameGroup.clear();
@@ -72,16 +71,41 @@ public class DefView extends ImageView {
     private void reload(DefInfo def) {
         previousLoad.cancel(false);
         if (def != null) {
+            boolean needLoad = false;
+            a: for (DefInfo.Group group : def.groups) {
+                for (DefInfo.Frame frame : group.frames) {
+                    if (frame.cachedData == null) {
+                        needLoad = true;
+                        break a;
+                    }
+                    if (!loaded.containsKey(frame.cachedData)) {
+                        needLoad = true;
+                        break a;
+                    }
+                }
+            }
+            if (!needLoad) {
+                Map<int[][], Image> images = new HashMap<>();
+                for (DefInfo.Group group : def.groups) {
+                    for (DefInfo.Frame frame : group.frames) {
+                        images.put(frame.cachedData, loaded.get(frame.cachedData));
+                    }
+                }
+                notifyLoaded(def, images);
+                return;
+            }
+            loaded.clear();
             setImage(LOADING);
         } else {
+            loaded.clear();
             setImage(EMPTY);
             return;
         }
         previousLoad = CompletableFuture.runAsync(() -> {
-            Map<DefInfo.Frame, Image> images = new HashMap<>();
+            Map<int[][], Image> images = new HashMap<>();
             for (DefInfo.Group group : def.groups) {
                 for (DefInfo.Frame frame : group.frames) {
-                    images.computeIfAbsent(frame, f -> ImgFilesUtils.decode(f.data.decodeFrame(), true, false));
+                    images.computeIfAbsent(frame.decodeFrame(), f -> ImgFilesUtils.decode(f, true, false));
                 }
             }
 
@@ -93,9 +117,9 @@ public class DefView extends ImageView {
         if (def == null || def.groups.isEmpty()) {
             return;
         }
-        frameIndex--;
-        if (frameIndex < 0) {
-            frameIndex = frames.size() - 1;
+        globalIndex--;
+        if (globalIndex < 0) {
+            globalIndex = frames.size() - 1;
         }
         updateFrame();
     }
@@ -104,19 +128,31 @@ public class DefView extends ImageView {
         if (def == null || def.groups.isEmpty()) {
             return;
         }
-        frameIndex++;
-        if (frameIndex >= frames.size()) {
-            frameIndex = 0;
+        globalIndex++;
+        if (globalIndex >= frames.size()) {
+            globalIndex = 0;
+        }
+        updateFrame();
+    }
+
+    public void nextFrameInGroup() {
+        if (def == null || def.groups.isEmpty()) {
+            return;
+        }
+        int group = getGroup();
+        setFrame(group, getFrame() + 1);
+        if (globalIndex == -1) {
+            setFrame(group, 0);
         }
         updateFrame();
     }
 
     public void setFrame(int group, int frame) {
-        frameIndex = frameGroupToFrameIndex.getOrDefault(group << 16 | frame, -1);
+        globalIndex = frameGroupToFrameIndex.getOrDefault(group << 16 | frame, -1);
         updateFrame();
     }
 
-    private void notifyLoaded(DefInfo def, Map<DefInfo.Frame, Image> images) {
+    private void notifyLoaded(DefInfo def, Map<int[][], Image> images) {
         if (this.def != def) {
             return;
         }
@@ -131,43 +167,51 @@ public class DefView extends ImageView {
     }
 
     public Image currentImage() {
-        DefInfo.Frame frame = currentFrame();
+        DefInfo.Frame frame = getCurrentFrame();
         if (frame == null) {
             return EMPTY;
         }
-        return loaded.get(frame);
+        return loaded.get(frame.decodeFrame());
     }
 
-    private DefInfo.Frame currentFrame() {
-        if (frameIndex < 0 || frameIndex >= frames.size()) {
+    public DefInfo.Frame getCurrentFrame() {
+        if (globalIndex < 0 || globalIndex >= frames.size()) {
             return null;
         }
-        return frames.get(frameIndex);
+        return frames.get(globalIndex);
     }
 
     public int getFrame() {
-        if (frameIndex < 0 || frameIndex >= frameIndexToFameGroup.size()) {
+        if (globalIndex < 0 || globalIndex >= frameIndexToFameGroup.size()) {
             return 0;
         }
-        return frameIndexToFameGroup.get(frameIndex) & 0xffff;
+        return frameIndexToFameGroup.get(globalIndex) & 0xffff;
     }
     public int getGroup() {
-        if (frameIndex < 0 || frameIndex >= frameIndexToFameGroup.size()) {
+        if (globalIndex < 0 || globalIndex >= frameIndexToFameGroup.size()) {
             return 0;
         }
-        return frameIndexToFameGroup.get(frameIndex) >> 16;
+        return frameIndexToFameGroup.get(globalIndex) >> 16;
     }
 
-    public int currentIndex() {
-        return frameIndex;
+    public int getGlobalIndex() {
+        return globalIndex;
     }
 
     public void setCurrentIndex(int index) {
-        this.frameIndex = index;
+        this.globalIndex = index;
         updateFrame();
     }
 
-    public int maxIndex() {
+    public int getMaxIndex() {
         return frames.size() - 1;
+    }
+
+    public DefInfo getDef() {
+        return def;
+    }
+
+    public void setFrame(DefInfo.Frame value) {
+        setCurrentIndex(frames.indexOf(value));
     }
 }

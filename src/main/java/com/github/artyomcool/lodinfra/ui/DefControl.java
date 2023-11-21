@@ -15,6 +15,7 @@ import javafx.scene.control.Skin;
 import javafx.scene.image.ImageView;
 import javafx.scene.image.WritableImage;
 import javafx.scene.layout.HBox;
+import javafx.scene.layout.Priority;
 import javafx.scene.layout.StackPane;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.SVGPath;
@@ -27,7 +28,7 @@ public class DefControl extends HBox {
     private final DefView imageView;
     private final DefView[] dependent;
     private final JFXButton prevFrame = new JFXButton(null, prevIcon());
-    private final JFXToggleNode playPause = new JFXToggleNode();
+    public final JFXToggleNode playPause = new JFXToggleNode();
     private List<Boolean> changes = Collections.emptyList();
 
     {
@@ -37,7 +38,7 @@ public class DefControl extends HBox {
 
     private final JFXButton nextFrame = new JFXButton(null, nextIcon());
     private final JFXButton nextDiffFrame = new JFXButton(null, ffIcon());
-    private final JFXSlider slider = new JFXSlider() {
+    public final JFXSlider slider = new JFXSlider() {
         {
             setIndicatorPosition(JFXSlider.IndicatorPosition.RIGHT);
             valueProperty().addListener(new ChangeListener<>() {
@@ -87,10 +88,12 @@ public class DefControl extends HBox {
 
         List<ButtonBase> buttons = Arrays.asList(prevFrame, playPause, nextFrame, nextDiffFrame);
         getChildren().setAll(prevFrame, playPause, nextFrame, nextDiffFrame, slider);
+        HBox.setHgrow(slider, Priority.ALWAYS);
 
         prevFrame.setOnAction(e -> prevFrame());
         nextFrame.setOnAction(e -> nextFrame());
         nextDiffFrame.setOnAction(e -> nextDiffFrame());
+        nextDiffFrame.setVisible(false);
 
         for (ButtonBase button : buttons) {
             button.setPadding(new Insets(4, 4, 4, 4));
@@ -104,15 +107,24 @@ public class DefControl extends HBox {
                 view.setFrame(imageView.getGroup(), imageView.getFrame());
             }
             sliderChanging = true;
-            slider.setValue(Math.max(0, imageView.currentIndex()));
-            slider.setMax(Math.max(0, imageView.maxIndex()));
+            slider.setValue(Math.max(0, imageView.getGlobalIndex()));
+            slider.setMax(Math.max(0, imageView.getMaxIndex()));
             sliderChanging = false;
         });
     }
 
-    public void tick() {
+    public DefControl noDiff() {
+        getChildren().remove(nextDiffFrame);
+        return this;
+    }
+
+    public void tick(boolean lockOnGroup) {
         if (playPause.isSelected()) {
-            nextFrame();
+            if (lockOnGroup) {
+                imageView.nextFrameInGroup();
+            } else {
+                imageView.nextFrame();
+            }
         }
     }
 
@@ -125,7 +137,7 @@ public class DefControl extends HBox {
     }
 
     private void nextDiffFrame() {
-        int i = imageView.currentIndex();
+        int i = imageView.getGlobalIndex();
         int oldI = i;
         do {
             i = (i + 1) % changes.size();

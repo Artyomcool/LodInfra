@@ -69,7 +69,12 @@ public class DefInfo {
     };
     public static final String[] UNKNOWN_GROUPS = {};
 
-    public static String[] groupNames(int size) {
+    public static String[] groupNames(DefInfo def) {
+        int maxIndex = 0;
+        for (Group group : def.groups) {
+            maxIndex = Math.max(maxIndex, group.groupIndex);
+        }
+        int size = maxIndex + 1;
         if (size >= 22) {
             return BATTLE_GROUPS;
         }
@@ -108,6 +113,16 @@ public class DefInfo {
 
     public final List<Group> groups = new ArrayList<>();
 
+    public DefInfo cloneBase() {
+        DefInfo def = new DefInfo();
+        def.type = type;
+        def.fullWidth = fullWidth;
+        def.fullHeight = fullHeight;
+        def.palette = palette;
+        def.path = path;
+        return def;
+    }
+
     public static class Group {
         public final DefInfo def;
         public int groupIndex;
@@ -116,6 +131,13 @@ public class DefInfo {
 
         public Group(DefInfo def) {
             this.def = def;
+        }
+
+        public Group cloneBase(DefInfo def) {
+            Group group = new Group(def);
+            group.groupIndex = groupIndex;
+            group.name = name;
+            return group;
         }
     }
 
@@ -130,10 +152,28 @@ public class DefInfo {
          */
         public int compression = 1;    // 0 - no compression (0 spec colors), 1 - large packs (8 spec colors), 2 - small packs (6 spec colors), 3 - small packs 32 (6 spec colors)
         public int frameDrawType = 0; // 0 - normal, 1 - lightening
-        public FrameData data;
+        public final FrameData data;
+        public int[][] cachedData;
 
-        public Frame(Group group) {
+        public Frame(Group group, FrameData data) {
             this.group = group;
+            this.data = data;
+        }
+
+        public Frame cloneBase(Group group) {
+            Frame frame = new Frame(group, data);
+            frame.name = name;
+            frame.compression = compression;
+            frame.frameDrawType = frameDrawType;
+            frame.cachedData = cachedData;
+            return frame;
+        }
+
+        public int[][] decodeFrame() {
+            if (cachedData == null) {
+                return cachedData = data.decodeFrame();
+            }
+            return cachedData;
         }
     }
 

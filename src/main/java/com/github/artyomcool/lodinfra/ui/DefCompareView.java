@@ -4,18 +4,19 @@ import com.github.artyomcool.lodinfra.h3common.D32;
 import com.github.artyomcool.lodinfra.h3common.DefInfo;
 import com.jfoenix.controls.JFXButton;
 import com.jfoenix.controls.JFXCheckBox;
-import javafx.animation.AnimationTimer;
 import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Group;
 import javafx.scene.Node;
+import javafx.scene.Scene;
 import javafx.scene.control.Label;
-import javafx.scene.control.TextField;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.SVGPath;
+import javafx.stage.Modality;
+import javafx.stage.Stage;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -26,24 +27,6 @@ import java.util.List;
 import static com.github.artyomcool.lodinfra.ui.ImgFilesUtils.colorDifference;
 
 public class DefCompareView extends VBox {
-    private final AnimationTimer timer = new AnimationTimer() {
-        long prev = 0;
-
-        @Override
-        public void handle(long now) {
-            String animationText = animationSpeed.getText();
-            int anim;
-            try {
-                anim = Integer.parseInt(animationText);
-            } catch (NumberFormatException ignored) {
-                return;
-            }
-            if (now - prev > anim * 1_000_000L) {
-                nextFrame();
-                prev = now;
-            }
-        }
-    };
     private final DefView local = new DefView();
     private final DefControl localControl = new DefControl(local);
     private final DefView remote = new DefView();
@@ -52,16 +35,13 @@ public class DefCompareView extends VBox {
     private final DefControl diffControl = new DefControl(diff);
     private final DefControl allControl = new DefControl(diff, local, remote);
     private final JFXCheckBox lockPreviews = new JFXCheckBox("Lock previews");
-    private final TextField animationSpeed = new TextField("200");
-
-    {
-        animationSpeed.setPrefColumnCount(3);
-    }
+    private final AnimationSpeedField animationSpeed = new AnimationSpeedField(this::nextFrame);
 
     private final JFXButton expand = new JFXButton(null, expandIcon());
 
     {
         expand.setPadding(new Insets(4, 4, 4, 4));
+        expand.setOnAction(e -> expand());
     }
 
     private List<Boolean> changes = new ArrayList<>();
@@ -85,9 +65,15 @@ public class DefCompareView extends VBox {
                 diff,
                 diffControl
         );
+        allControl.setViewOrder(-1);
+        diffControl.setViewOrder(-1);
+        localControl.setViewOrder(-1);
+        remoteControl.setViewOrder(-1);
+
         localControl.setVisible(false);
         remoteControl.setVisible(false);
         diffControl.setVisible(false);
+
         lockPreviews.setSelected(true);
         lockPreviews.setOnAction(e -> {
             localControl.setVisible(!lockPreviews.isSelected());
@@ -108,23 +94,44 @@ public class DefCompareView extends VBox {
         this.local.setDef(localDef);
         this.remote.setDef(remoteDef);
         this.diff.setDef(diffDef);
+
+        expand.setVisible(local != null);
     }
 
     public void start() {
-        timer.start();
+        animationSpeed.start();
     }
 
     public void stop() {
-        timer.stop();
+        animationSpeed.stop();
+    }
+
+    public void expand() {
+        DefPane root = new DefPane();
+        root.setDef(local.getDef(), local.getCurrentFrame());
+        Stage stage = new Stage();
+        Scene scene = new Scene(root);
+        scene.getStylesheets().add(getClass().getResource("/theme.css").toExternalForm());
+        stage.setScene(scene);
+        stage.setTitle("View & Edit");
+        stage.setWidth(800);
+        stage.setHeight(600);
+        stage.initModality(Modality.WINDOW_MODAL);
+        stage.initOwner(getScene().getWindow());
+        root.start();
+        animationSpeed.stop();
+        stage.showAndWait();
+        root.stop();
+        animationSpeed.start();
     }
 
     private void nextFrame() {
         if (lockPreviews.isSelected()) {
-            allControl.tick();
+            allControl.tick(false);
         } else {
-            localControl.tick();
-            remoteControl.tick();
-            diffControl.tick();
+            localControl.tick(false);
+            remoteControl.tick(false);
+            diffControl.tick(false);
         }
     }
 
@@ -188,10 +195,9 @@ public class DefCompareView extends VBox {
             for (int j = 0; j < Math.max(oneFrames, twoFrames); j++) {
                 DefInfo.Frame oneFrame = oneFrames > j ? oneGroup.frames.get(j) : null;
                 DefInfo.Frame twoFrame = twoFrames > j ? twoGroup.frames.get(j) : null;
-                DefInfo.Frame diffFrame = new DefInfo.Frame(group);
                 int frameIndex = outChanges.size();
                 outChanges.add(false);
-                diffFrame.data = () -> {
+                DefInfo.FrameData frameData = () -> {
                     int[][] onePixels = oneFrame == null ? new int[0][0] : oneFrame.data.decodeFrame();
                     int[][] twoPixels = twoFrame == null ? new int[0][0] : twoFrame.data.decodeFrame();
                     int height = Math.max(onePixels.length, twoPixels.length);
@@ -232,6 +238,7 @@ public class DefCompareView extends VBox {
                     }
                     return resPixels;
                 };
+                DefInfo.Frame diffFrame = new DefInfo.Frame(group, frameData);
                 group.frames.add(diffFrame);
             }
             result.groups.add(group);
@@ -249,7 +256,7 @@ public class DefCompareView extends VBox {
     }
 
     private static Node expandIcon() {
-        String d = "M175.445,336.555c-5-5.009-13.099-5.009-18.099,0L25.6,468.301V396.8c0-7.074-5.726-12.8-12.8-12.8 C5.726,384,0,389.726,0,396.8v102.4c0,7.074,5.726,12.8,12.8,12.8h102.4c7.074,0,12.8-5.726,12.8-12.8 c0-7.074-5.726-12.8-12.8-12.8H43.699l131.746-131.746C180.446,349.653,180.446,341.555,175.445,336.555z M499.2,0H396.8C389.726,0,384,5.726,384,12.8c0,7.074,5.726,12.8,12.8,12.8h71.492L336.555,157.346 c-5.001,5.001-5.001,13.099,0,18.099c5,5.001,13.099,5.001,18.099,0L486.4,43.699V115.2c0,7.074,5.726,12.8,12.8,12.8 c7.074,0,12.8-5.726,12.8-12.8V12.8C512,5.726,506.274,0,499.2,0z";
+        String d = "M435.197,153.593h-115.2v25.6h102.4v307.2h-332.8v-307.2h102.4v-25.6h-115.2c-7.066,0-12.8,5.734-12.8,12.8v332.8 c0,7.066,5.734,12.8,12.8,12.8h358.4c7.066,0,12.8-5.734,12.8-12.8v-332.8C447.997,159.328,442.262,153.593,435.197,153.593z M341.74,78.782l-76.8-75.136c-5.043-4.941-13.158-4.847-18.099,0.205l-76.595,74.923 c-5.052,4.949-5.146,13.047-0.205,18.108c4.941,5.035,13.056,5.129,18.099,0.188l55.057-53.854v275.098 c0,7.074,5.734,12.8,12.8,12.8c7.066,0,12.8-5.717,12.8-12.8V43.215l55.049,53.854c5.043,4.949,13.158,4.855,18.099-0.188 C346.885,91.821,346.8,83.722,341.74,78.782z";
         SVGPath path = new SVGPath();
         path.setFill(Color.grayRgb(0x60));
         path.setContent(d);

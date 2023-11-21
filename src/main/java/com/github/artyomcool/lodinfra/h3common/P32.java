@@ -2,7 +2,6 @@ package com.github.artyomcool.lodinfra.h3common;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.util.Map;
 
 public class P32 extends Def {
 
@@ -26,9 +25,7 @@ public class P32 extends Def {
         Group group = new Group(def);
         def.groups.add(group);
 
-        Frame frame = new Frame(group);
-        frame.compression = 0;
-        frame.data = () -> {
+        Frame frame = new Frame(group, () -> {
             int[][] image = new int[height][width];
             buffer.position(imageOffset);
             for (int j = height - 1; j >= 0; j--) {
@@ -37,7 +34,8 @@ public class P32 extends Def {
                 }
             }
             return image;
-        };
+        });
+        frame.compression = 0;
         group.frames.add(frame);
 
         return def;
@@ -67,7 +65,7 @@ public class P32 extends Def {
                 .putInt(width)
                 .putInt(height);
 
-        int[][] image = def.groups.get(0).frames.get(0).data.decodeFrame();
+        int[][] image = def.groups.get(0).frames.get(0).decodeFrame();
         buffer.position(imageOffset);
         for (int j = height - 1; j >= 0; j--) {
             int[] scanline = image[j];
