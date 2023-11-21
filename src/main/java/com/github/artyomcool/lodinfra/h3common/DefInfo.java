@@ -1,6 +1,7 @@
 package com.github.artyomcool.lodinfra.h3common;
 
 import com.github.artyomcool.lodinfra.ui.ImgFilesUtils;
+import javafx.application.Platform;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;

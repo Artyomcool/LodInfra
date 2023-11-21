@@ -171,7 +171,11 @@ public class DefView extends ImageView {
         if (frame == null) {
             return EMPTY;
         }
-        return loaded.get(frame.decodeFrame());
+        int[][] cachedData = frame.cachedData;
+        if (cachedData == null) {
+            return LOADING;
+        }
+        return loaded.get(cachedData);
     }
 
     public DefInfo.Frame getCurrentFrame() {

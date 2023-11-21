@@ -126,7 +126,6 @@ public class DefPane extends StackPane {
             }
         });
         control.playPause.setSelected(false);
-        control.slider.setIndicatorPosition(JFXSlider.IndicatorPosition.LEFT);
         preview.addOnChangedListener(() -> {
             if (!react) {
                 return;

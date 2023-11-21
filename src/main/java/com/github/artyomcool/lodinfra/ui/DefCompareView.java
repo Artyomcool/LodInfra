@@ -4,6 +4,7 @@ import com.github.artyomcool.lodinfra.h3common.D32;
 import com.github.artyomcool.lodinfra.h3common.DefInfo;
 import com.jfoenix.controls.JFXButton;
 import com.jfoenix.controls.JFXCheckBox;
+import com.jfoenix.controls.JFXSlider;
 import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -81,6 +82,8 @@ public class DefCompareView extends VBox {
             diffControl.setVisible(!lockPreviews.isSelected());
             allControl.setVisible(lockPreviews.isSelected());
         });
+
+        allControl.slider.setIndicatorPosition(JFXSlider.IndicatorPosition.RIGHT);
     }
 
     public void setImages(Path local, Path remote) {
@@ -198,8 +201,9 @@ public class DefCompareView extends VBox {
                 int frameIndex = outChanges.size();
                 outChanges.add(false);
                 DefInfo.FrameData frameData = () -> {
-                    int[][] onePixels = oneFrame == null ? new int[0][0] : oneFrame.data.decodeFrame();
-                    int[][] twoPixels = twoFrame == null ? new int[0][0] : twoFrame.data.decodeFrame();
+                    boolean notified = false;
+                    int[][] onePixels = oneFrame == null ? new int[0][0] : oneFrame.decodeFrame();
+                    int[][] twoPixels = twoFrame == null ? new int[0][0] : twoFrame.decodeFrame();
                     int height = Math.max(onePixels.length, twoPixels.length);
                     int width = height == 0 ? 0 : Math.max(
                             onePixels.length == 0 ? 0 : onePixels[0].length,
@@ -215,8 +219,9 @@ public class DefCompareView extends VBox {
                                     oneScan.length > x ? oneScan[x] : 0,
                                     twoScan.length > x ? twoScan[x] : 0
                             );
-                            if (d != 0) {
+                            if (!notified && d != 0) {
                                 Platform.runLater(() -> notifyChanges(outChanges, frameIndex));
+                                notified = true;
                             }
                             if (d == 0) {
                                 d = 0xff00ffff;

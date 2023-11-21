@@ -40,7 +40,7 @@ public class DefControl extends HBox {
     private final JFXButton nextDiffFrame = new JFXButton(null, ffIcon());
     public final JFXSlider slider = new JFXSlider() {
         {
-            setIndicatorPosition(JFXSlider.IndicatorPosition.RIGHT);
+            setIndicatorPosition(IndicatorPosition.LEFT);
             valueProperty().addListener(new ChangeListener<>() {
                 @Override
                 public void changed(ObservableValue<? extends Number> observable, Number oldValue, Number newValue) {
@@ -58,7 +58,7 @@ public class DefControl extends HBox {
                 StackPane track;
                 StackPane thumb;
                 {
-                    getChildren().add(heatmap);
+                    getChildren().add(0, heatmap);
                     heatmap.setSmooth(false);
 
                     track = (StackPane) getSkinnable().lookup(".track");
