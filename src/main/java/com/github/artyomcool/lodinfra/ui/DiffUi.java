@@ -430,11 +430,11 @@ public class DiffUi extends Application {
                         }
 
                         Item item = entry.getKey();
-                        if (item.isSynthetic || !item.remote.isFile) {
+                        if (item.isSynthetic || !item.local.isFile) {
                             continue;
                         }
 
-                        files.append(item.remote.name).append("\r\n");
+                        files.append(item.local.name).append("\r\n");
                     }
                     files.append("\r\n");
 
@@ -449,7 +449,7 @@ public class DiffUi extends Application {
                         }
 
                         Item item = entry.getKey();
-                        if (item.isSynthetic || !item.remote.isFile) {
+                        if (item.isSynthetic || !item.local.isFile) {
                             continue;
                         }
 

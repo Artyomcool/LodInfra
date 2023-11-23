@@ -111,7 +111,7 @@ jlink {
     launcher {
         name = 'pack'
         noConsole = false
-        jvmArgs += opens + '-Xmx1g' + '-XX:+HeapDumpOnOutOfMemoryError'
+        jvmArgs += opens + '-Xmx2g'
     }
 
     mergedModule {
