@@ -1,25 +1,23 @@
 package com.github.artyomcool.lodinfra.h3common;
 
 import com.github.artyomcool.lodinfra.ui.ImgFilesUtils;
-import javafx.application.Platform;
 
-import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.nio.file.Files;
+import java.nio.IntBuffer;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 
 public class DefInfo {
 
-    public static final int[] SPEC_COLORS = new int[] {
+    public static final int[] SPEC_COLORS = new int[]{
             0xFF00FFFF,
             0xFFFF96FF,
-            0xFF00BFBF,
-            0xFFE343C0,
+            0xFFFF64FF,
+            0xFFFF32FF,
             0xFFFF00FF,
             0xFFFFFF00,
             0xFFB400FF,
@@ -144,6 +142,10 @@ public class DefInfo {
 
     public static class Frame {
         public final Group group;
+        public final int fullWidth;
+        public final int fullHeight;
+        public final IntBuffer pixels;
+
         public String name;
         /*
         type == 43 || type == 44 -> 3
@@ -153,43 +155,53 @@ public class DefInfo {
          */
         public int compression = 1;    // 0 - no compression (0 spec colors), 1 - large packs (8 spec colors), 2 - small packs (6 spec colors), 3 - small packs 32 (6 spec colors)
         public int frameDrawType = 0; // 0 - normal, 1 - lightening
-        public final FrameData data;
-        public int[][] cachedData;
 
-        public Frame(Group group, FrameData data) {
+        public Frame(Group group, int fullWidth, int fullHeight, IntBuffer pixels) {
             this.group = group;
-            this.data = data;
+            this.fullWidth = fullWidth;
+            this.fullHeight = fullHeight;
+            this.pixels = pixels;
+        }
+
+        public static IntBuffer emptyPixels(int w, int h) {
+            int[] result = new int[w * h];
+            Arrays.fill(result, SPEC_COLORS[0]);
+            return IntBuffer.wrap(result);
         }
 
         public Frame cloneBase(Group group) {
-            Frame frame = new Frame(group, data);
+            Frame frame = new Frame(group, fullWidth, fullHeight, pixels);
             frame.name = name;
             frame.compression = compression;
             frame.frameDrawType = frameDrawType;
-            frame.cachedData = cachedData;
             return frame;
         }
 
-        public int[][] decodeFrame() {
-            if (cachedData == null) {
-                return cachedData = data.decodeFrame();
+        public int color(int x, int y) {
+            return ImgFilesUtils.unmultiply(pixels.get(x + y * fullWidth));
+        }
+
+        public IntBuffer pixelsWithSize(int w, int h) {
+            if (fullWidth == w && fullHeight == h) {
+                return pixels.duplicate();
             }
-            return cachedData;
+
+            IntBuffer buffer = emptyPixels(w, h);
+            for (int y = 0; y < fullHeight; y++) {
+                buffer.put(y * w, pixels, y * fullWidth, fullWidth);
+            }
+
+            return buffer;
         }
     }
 
     public static DefInfo load(Path path) {
         return ImgFilesUtils.processFile(path, null, buffer -> {
-            try {
-                byte[] bytes = Files.readAllBytes(path);
-                DefInfo def = DefInfo.load(ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN));
-                if (def != null) {
-                    def.path = path;
-                }
-                return def;
-            } catch (IOException e) {
-                throw new UncheckedIOException(e);
+            DefInfo def = DefInfo.load(buffer.duplicate().order(ByteOrder.LITTLE_ENDIAN));
+            if (def != null) {
+                def.path = path;
             }
+            return def;
 
         });
     }
@@ -242,45 +254,46 @@ public class DefInfo {
     }
 
     protected static class PackedFrame {
-        final int[][] data;
-
-        final int fullWidth;
-        final int fullHeight;
-
-        final int width;
-        final int height;
-        final int x;
-        final int y;
-
-        final int compression;
-        final int drawType;
-
+        final Frame frame;
+        final ImgFilesUtils.Box box;
         final int hashCode;
 
-        PackedFrame(int[][] data, int fullWidth, int fullHeight, int width, int height, int x, int y, int compression, int drawType) {
-            this.data = data;
-            this.fullWidth = fullWidth;
-            this.fullHeight = fullHeight;
-            this.width = width;
-            this.height = height;
-            this.x = x;
-            this.y = y;
-            this.compression = compression;
-            this.drawType = drawType;
+        PackedFrame(Frame frame, ImgFilesUtils.Box box) {
+            this.frame = frame;
+            this.box = box;
             this.hashCode = calcHashCode();
         }
 
         private int calcHashCode() {
-            int result = Arrays.deepHashCode(data);
-            result = 31 * result + fullWidth;
-            result = 31 * result + fullHeight;
-            result = 31 * result + width;
-            result = 31 * result + height;
-            result = 31 * result + x;
-            result = 31 * result + y;
-            result = 31 * result + compression;
-            result = 31 * result + drawType;
+            int result = box.hashCode();
+            result = 31 * result + frame.fullWidth;
+            result = 31 * result + frame.fullHeight;
+            result = 31 * result + frame.compression;
+            result = 31 * result + frame.frameDrawType;
+            result = 31 * result + frame.pixels.hashCode();
             return result;
+        }
+
+        public int color(int x, int y) {
+            return frame.color(x + box.x, y + box.y);
+        }
+
+        public int[] scanline(int y) {
+            int[] scanline = new int[box.width];
+            frame.pixels.get(box.x + (y + box.y) * frame.fullWidth, scanline);
+            for (int i = 0; i < scanline.length; i++) {
+                scanline[i] = ImgFilesUtils.unmultiply(scanline[i]);
+            }
+            return scanline;
+        }
+
+        public int[] scanline(int y, int dx, int w) {
+            int[] scanline = new int[w];
+            frame.pixels.get(box.x + dx  + (y + box.y) * frame.fullWidth, scanline);
+            for (int i = 0; i < scanline.length; i++) {
+                scanline[i] = ImgFilesUtils.unmultiply(scanline[i]);
+            }
+            return scanline;
         }
 
         @Override
@@ -288,18 +301,15 @@ public class DefInfo {
             if (this == o) return true;
             if (o == null || getClass() != o.getClass()) return false;
 
-            PackedFrame frame = (PackedFrame) o;
+            PackedFrame that = (PackedFrame) o;
 
-            if (fullWidth != frame.fullWidth) return false;
-            if (fullHeight != frame.fullHeight) return false;
-            if (width != frame.width) return false;
-            if (height != frame.height) return false;
-            if (x != frame.x) return false;
-            if (y != frame.y) return false;
-            if (compression != frame.compression) return false;
-            if (drawType != frame.drawType) return false;
-            if (hashCode != frame.hashCode) return false;
-            return Arrays.deepEquals(data, frame.data);
+            if (hashCode != that.hashCode) return false;
+            if (frame.fullWidth != that.frame.fullWidth) return false;
+            if (frame.fullHeight != that.frame.fullHeight) return false;
+            if (frame.compression != that.frame.compression) return false;
+            if (frame.frameDrawType != that.frame.frameDrawType) return false;
+            if (!Objects.equals(box, that.box)) return false;
+            return Objects.equals(frame.pixels, that.frame.pixels);
         }
 
         @Override
@@ -318,9 +328,4 @@ public class DefInfo {
             this.packedFrame = packedFrame;
         }
     }
-
-    public interface FrameData {
-        int[][] decodeFrame();
-    }
-
 }

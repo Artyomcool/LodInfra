@@ -2,6 +2,7 @@ package com.github.artyomcool.lodinfra.h3common;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.IntBuffer;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
@@ -55,114 +56,116 @@ public class Def extends DefInfo {
 
             for (int j = 0; j < framesCount; j++) {
                 int offset = offsets[j];
-                FrameData data = () -> {
-                    ByteBuffer buf = buffer.duplicate().order(ByteOrder.LITTLE_ENDIAN).position(offset);
 
-                    int size = buf.getInt();
-                    int compression = buf.getInt();
-                    int fullWidth = buf.getInt();
-                    int fullHeight = buf.getInt();
+                ByteBuffer buf = buffer.duplicate().order(ByteOrder.LITTLE_ENDIAN).position(offset);
 
-                    int width = buf.getInt();
-                    int height = buf.getInt();
-                    int x = buf.getInt();
-                    int y = buf.getInt();
+                int size = buf.getInt();
+                int compression = buf.getInt();
+                int fullWidth = buf.getInt();
+                int fullHeight = buf.getInt();
 
-                    int start = buf.position();
+                int width = buf.getInt();
+                int height = buf.getInt();
+                int x = buf.getInt();
+                int y = buf.getInt();
 
-                    int xx = x;
-                    int yy = y;
+                int start = buf.position();
 
-                    int[][] image = new int[fullHeight][fullWidth];
-                    for (int[] row : image) {
-                        Arrays.fill(row, SPEC_COLORS[0]);
+                IntBuffer pixels = IntBuffer.allocate(fullHeight * fullWidth);
+                int[] pixelsArray = pixels.array();
+                Arrays.fill(pixelsArray, SPEC_COLORS[0]);
+
+                int scanLineDiff = fullWidth - width;
+                switch (compression) {
+                    case 0 -> {
+                        int pos = x + y * fullWidth;
+                        for (int i1 = 0; i1 < height; i1++) {
+                            for (int j1 = 0; j1 < width; j1++) {
+                                pixelsArray[pos++] = palette[buf.get() & 0xff];
+                            }
+                            pos += scanLineDiff;
+                        }
                     }
-
-                    switch (compression) {
-                        case 0 -> {
-                            for (int i1 = 0; i1 < height; i1++) {
-                                for (int j1 = 0; j1 < width; j1++) {
-                                    image[y + i1][x + j1] = palette[buf.get() & 0xff];
-                                }
-                            }
+                    case 1 -> {
+                        int[] offsets1 = new int[height];
+                        for (int i1 = 0; i1 < offsets1.length; i1++) {
+                            offsets1[i1] = buf.getInt() + start;
                         }
-                        case 1 -> {
-                            int[] offsets1 = new int[height];
-                            for (int i1 = 0; i1 < offsets1.length; i1++) {
-                                offsets1[i1] = buf.getInt() + start;
-                            }
-                            for (int i1 : offsets1) {
-                                buf.position(i1);
+                        int pos = x + y * fullWidth;
+                        for (int i1 : offsets1) {
+                            buf.position(i1);
 
-                                for (int w = 0; w < width; ) {
-                                    int index = (buf.get() & 0xff);
-                                    int count = (buf.get() & 0xff) + 1;
-                                    for (int j1 = 0; j1 < count; j1++) {
-                                        image[yy][xx] = index == 0xff ? palette[buf.get() & 0xff] : SPEC_COLORS[index];
-                                        xx++;
-                                    }
-                                    w += count;
+                            for (int w = 0; w < width; ) {
+                                int index = (buf.get() & 0xff);
+                                int count = (buf.get() & 0xff) + 1;
+                                for (int j1 = 0; j1 < count; j1++) {
+                                    pixelsArray[pos++] = index == 0xff ? palette[buf.get() & 0xff] : SPEC_COLORS[index];
                                 }
-                                xx = x;
-                                yy++;
+                                w += count;
                             }
+                            pos += scanLineDiff;
                         }
-                        case 2 -> {
-                            int[] offsets1 = new int[height];
-                            for (int i1 = 0; i1 < offsets1.length; i1++) {
-                                offsets1[i1] = (buf.getShort() & 0xffff) + start;
-                            }
-                            for (int i1 : offsets1) {
-                                buf.position(i1);
-
-                                for (int w = 0; w < width; ) {
-                                    int b = buf.get() & 0xff;
-                                    int index = b >> 5;
-                                    int count = (b & 0x1f) + 1;
-                                    for (int j1 = 0; j1 < count; j1++) {
-                                        image[yy][xx] = index == 0x7 ? palette[buf.get() & 0xff] : SPEC_COLORS[index];
-                                        xx++;
-                                        if (xx >= x + width) {
-                                            yy++;
-                                            xx = x;
-                                        }
-                                    }
-                                    w += count;
-                                }
-                            }
+                    }
+                    case 2 -> {
+                        int[] offsets1 = new int[height];
+                        for (int i1 = 0; i1 < offsets1.length; i1++) {
+                            offsets1[i1] = (buf.getShort() & 0xffff) + start;
                         }
-                        case 3 -> {
-                            int[] offsets1 = new int[width * height / 32];
-                            for (int i1 = 0; i1 < offsets1.length; i1++) {
-                                offsets1[i1] = (buf.getShort() & 0xffff) + start;
-                            }
-                            for (int i1 : offsets1) {
-                                buf.position(i1);
 
-                                int left = 32;
-                                while (left > 0) {
-                                    int b = buf.get() & 0xff;
-                                    int index = b >> 5;
-                                    int count = (b & 0x1f) + 1;
+                        int xx = x;
+                        int pos = x + y * fullWidth;
+                        for (int i1 : offsets1) {
+                            buf.position(i1);
 
-                                    for (int j1 = 0; j1 < count; j1++) {
-                                        image[yy][xx] = index == 0x7 ? palette[buf.get() & 0xff] : SPEC_COLORS[index];
-                                        xx++;
-                                        if (xx >= x + width) {
-                                            yy++;
-                                            xx = x;
-                                        }
+                            for (int w = 0; w < width; ) {
+                                int b = buf.get() & 0xff;
+                                int index = b >> 5;
+                                int count = (b & 0x1f) + 1;
+                                for (int j1 = 0; j1 < count; j1++) {
+                                    pixelsArray[pos++] = index == 0x7 ? palette[buf.get() & 0xff] : SPEC_COLORS[index];
+                                    xx++;
+                                    if (xx >= x + width) {
+                                        pos += scanLineDiff;
+                                        xx = x;
                                     }
-
-                                    left -= count;
                                 }
+                                w += count;
                             }
                         }
                     }
+                    case 3 -> {
+                        int[] offsets1 = new int[width * height / 32];
+                        for (int i1 = 0; i1 < offsets1.length; i1++) {
+                            offsets1[i1] = (buf.getShort() & 0xffff) + start;
+                        }
 
-                    return image;
-                };
-                DefInfo.Frame frame = new DefInfo.Frame(group, data);
+                        int xx = x;
+                        int pos = x + y * fullWidth;
+                        for (int i1 : offsets1) {
+                            buf.position(i1);
+
+                            int left = 32;
+                            while (left > 0) {
+                                int b = buf.get() & 0xff;
+                                int index = b >> 5;
+                                int count = (b & 0x1f) + 1;
+
+                                for (int j1 = 0; j1 < count; j1++) {
+                                    pixelsArray[pos++] = index == 0x7 ? palette[buf.get() & 0xff] : SPEC_COLORS[index];
+                                    xx++;
+                                    if (xx >= x + width) {
+                                        pos += scanLineDiff;
+                                        xx = x;
+                                    }
+                                }
+
+                                left -= count;
+                            }
+                        }
+                    }
+                }
+
+                DefInfo.Frame frame = new DefInfo.Frame(group, fullWidth, fullHeight, pixels);
                 frame.name = names[j];
                 frame.compression = buffer.getInt(offset + 4);
                 group.frames.add(frame);
@@ -229,20 +232,20 @@ public class Def extends DefInfo {
 
             int offsetOfSize = buffer.position();
             buffer.putInt(0);   // size
-            buffer.putInt(packedFrame.compression);
-            buffer.putInt(packedFrame.fullWidth);
-            buffer.putInt(packedFrame.fullHeight);
+            buffer.putInt(packedFrame.frame.compression);
+            buffer.putInt(packedFrame.frame.fullWidth);
+            buffer.putInt(packedFrame.frame.fullHeight);
 
-            buffer.putInt(packedFrame.width);
-            buffer.putInt(packedFrame.height);
-            buffer.putInt(packedFrame.x);
-            buffer.putInt(packedFrame.y);
+            buffer.putInt(packedFrame.box.width);
+            buffer.putInt(packedFrame.box.height);
+            buffer.putInt(packedFrame.box.x);
+            buffer.putInt(packedFrame.box.y);
 
-            switch (packedFrame.compression) {
+            switch (packedFrame.frame.compression) {
                 case 0 -> {
-                    for (int y = 0; y < packedFrame.height; y++) {
-                        for (int x = 0; x < packedFrame.width; x++) {
-                            buffer.put(paletteMap.get(packedFrame.data[y + packedFrame.y][x + packedFrame.x]));
+                    for (int y = 0; y < packedFrame.box.height; y++) {
+                        for (int x = 0; x < packedFrame.box.width; x++) {
+                            buffer.put(paletteMap.get(packedFrame.color(x, y)));
                         }
                     }
                 }
@@ -250,18 +253,18 @@ public class Def extends DefInfo {
                     Map<HashArray, Integer> offsets = new HashMap<>();
                     int offsetsPos = buffer.position();
 
-                    buffer.position(offsetsPos + packedFrame.height * 4);
-                    for (int y = 0; y < packedFrame.height; y++) {
-                        int[] scanline = packedFrame.data[packedFrame.y + y];
+                    buffer.position(offsetsPos + packedFrame.box.height * 4);
+                    for (int y = 0; y < packedFrame.box.height; y++) {
+                        int[] scanline = packedFrame.scanline(y);
                         int offset = offsets.computeIfAbsent(new HashArray(scanline), k -> buffer.position());
                         if (offset == buffer.position()) {
-                            for (int x = 0; x < packedFrame.width; ) {
-                                int color = scanline[x + packedFrame.x];
+                            for (int x = 0; x < packedFrame.box.width; ) {
+                                int color = scanline[x + packedFrame.box.x];
                                 int index = paletteMap.get(color) & 0xff;
                                 if (index < 8) {
                                     int count = 1;
                                     int xx = x + 1;
-                                    while (xx < packedFrame.width && count < 256 && scanline[xx + packedFrame.x] == color) {
+                                    while (xx < packedFrame.box.width && count < 256 && scanline[xx + packedFrame.box.x] == color) {
                                         count++;
                                         xx++;
                                     }
@@ -271,7 +274,7 @@ public class Def extends DefInfo {
                                 } else {
                                     int count = 1;
                                     int xx = x;
-                                    while (xx + 1 < packedFrame.width && count < 256 && paletteMap.get(scanline[xx + 1 + packedFrame.x]) < 8) {
+                                    while (xx + 1 < packedFrame.box.width && count < 256 && paletteMap.get(scanline[xx + 1 + packedFrame.box.x]) < 8) {
                                         count++;
                                         xx++;
                                     }
@@ -279,7 +282,7 @@ public class Def extends DefInfo {
                                     buffer.put((byte) 0xff);
                                     buffer.put((byte) (count - 1));
                                     while (x <= xx) {
-                                        buffer.put(paletteMap.get(scanline[x + packedFrame.x]));
+                                        buffer.put(paletteMap.get(scanline[x + packedFrame.box.x]));
                                         x++;
                                     }
                                 }
@@ -292,18 +295,18 @@ public class Def extends DefInfo {
                     Map<HashArray, Integer> offsets = new HashMap<>();
                     int offsetsPos = buffer.position();
 
-                    buffer.position(offsetsPos + packedFrame.height * 2);
-                    for (int y = 0; y < packedFrame.height; y++) {
-                        int[] scanline = packedFrame.data[packedFrame.y + y];
+                    buffer.position(offsetsPos + packedFrame.box.height * 2);
+                    for (int y = 0; y < packedFrame.box.height; y++) {
+                        int[] scanline = packedFrame.scanline(y);
                         int offset = offsets.computeIfAbsent(new HashArray(scanline), k -> buffer.position());
                         if (offset == buffer.position()) {
-                            for (int x = 0; x < packedFrame.width; ) {
-                                int color = scanline[x + packedFrame.x];
+                            for (int x = 0; x < packedFrame.box.width; ) {
+                                int color = scanline[x + packedFrame.box.x];
                                 int index = paletteMap.get(color) & 0xff;
                                 if (index < 6) {
                                     int count = 1;
                                     int xx = x + 1;
-                                    while (xx < packedFrame.width && count < 32 && scanline[xx] == color) {
+                                    while (xx < packedFrame.box.width && count < 32 && scanline[xx] == color) {
                                         count++;
                                         xx++;
                                     }
@@ -312,7 +315,7 @@ public class Def extends DefInfo {
                                 } else {
                                     int count = 1;
                                     int xx = x;
-                                    while (xx + 1 < packedFrame.width && count < 32 && paletteMap.get(scanline[xx + 1]) < 6) {
+                                    while (xx + 1 < packedFrame.box.width && count < 32 && paletteMap.get(scanline[xx + 1]) < 6) {
                                         count++;
                                         xx++;
                                     }
@@ -328,22 +331,22 @@ public class Def extends DefInfo {
                     }
                 }
                 case 3 -> {
-                    int blocksCount = packedFrame.width * packedFrame.height / 32;
+                    int blocksCount = packedFrame.box.width * packedFrame.box.height / 32;
                     Map<HashArray, Integer> offsets = new HashMap<>();
                     int offsetsPos = buffer.position();
 
                     buffer.position(offsetsPos + blocksCount * 2);
 
-                    for (int y = 0; y < packedFrame.height; y += 32) {
-                        for (int xw = 0; xw < packedFrame.width; xw += 32) {
+                    for (int y = 0; y < packedFrame.box.height; y += 32) {
+                        for (int xw = 0; xw < packedFrame.box.width; xw += 32) {
                             int[] scanline = new int[32 * 32];
                             for (int yy = 0; yy < 32; yy++) {
-                                System.arraycopy(packedFrame.data[packedFrame.y + y + yy], packedFrame.x + xw, scanline, yy * 32, 32);
+                                System.arraycopy(packedFrame.scanline(y + yy, xw, 32), 0, scanline, yy * 32, 32);
                             }
                             int offset = offsets.computeIfAbsent(new HashArray(scanline), k -> buffer.position());
                             if (offset == buffer.position()) {
                                 for (int x = 0; x < 32; ) {
-                                    int color = scanline[x + packedFrame.x];
+                                    int color = scanline[x + packedFrame.box.x];
                                     int index = paletteMap.get(color) & 0xff;
                                     if (index < 6) {
                                         int count = 1;

@@ -1,42 +1,89 @@
 package com.github.artyomcool.lodinfra.ui;
 
-import com.github.artyomcool.lodinfra.h3common.D32;
-import com.github.artyomcool.lodinfra.h3common.Def;
 import com.github.artyomcool.lodinfra.h3common.DefInfo;
 import com.github.artyomcool.lodinfra.h3common.LodFile;
 import javafx.scene.image.Image;
 import javafx.scene.image.WritableImage;
-import javafx.scene.image.WritablePixelFormat;
 
-import java.io.*;
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
-import java.nio.channels.SeekableByteChannel;
-import java.nio.file.*;
-import java.nio.file.attribute.FileTime;
-import java.time.Instant;
-import java.util.*;
+import java.nio.file.NoSuchFileException;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 
 public class ImgFilesUtils {
 
+    public static void premultiply(int[] array) {
+        for (int i = 0; i < array.length; i++) {
+            array[i] = premultiply(array[i]);
+        }
+    }
+
+    public static void unmultiply(int[] array) {
+        for (int i = 0; i < array.length; i++) {
+            array[i] = unmultiply(array[i]);
+        }
+    }
+
+    public static int premultiply(int nonpre) {
+        int a = nonpre >>> 24;
+        if (a == 0xff) return nonpre;
+        if (a == 0x00) return 0;
+        int r = (nonpre >> 16) & 0xff;
+        int g = (nonpre >> 8) & 0xff;
+        int b = (nonpre) & 0xff;
+        r = (r * a + 127) / 0xff;
+        g = (g * a + 127) / 0xff;
+        b = (b * a + 127) / 0xff;
+        return (a << 24) | (r << 16) | (g << 8) | b;
+    }
+
+    public static int unmultiply(int pre) {
+        int a = pre >>> 24;
+        if (a == 0xff || a == 0x00) return pre;
+        int r = (pre >> 16) & 0xff;
+        int g = (pre >> 8) & 0xff;
+        int b = (pre) & 0xff;
+        int halfa = a >> 1;
+        r = (r >= a) ? 0xff : (r * 0xff + halfa) / a;
+        g = (g >= a) ? 0xff : (g * 0xff + halfa) / a;
+        b = (b >= a) ? 0xff : (b * 0xff + halfa) / a;
+        return (a << 24) | (r << 16) | (g << 8) | b;
+    }
+
     public static class Box {
-        public final int left, top, right, bottom;
+        public final int x, y, width, height;
 
-        public Box(int left, int top, int right, int bottom) {
-            this.left = left;
-            this.top = top;
-            this.right = right;
-            this.bottom = bottom;
+        public Box(int x, int y, int width, int height) {
+            this.x = x;
+            this.y = y;
+            this.width = width;
+            this.height = height;
         }
 
-        public int width() {
-            return right - left + 1;
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+
+            Box box = (Box) o;
+
+            if (x != box.x) return false;
+            if (y != box.y) return false;
+            if (width != box.width) return false;
+            return height == box.height;
         }
 
-        public int height() {
-            return bottom - top + 1;
+        @Override
+        public int hashCode() {
+            int result = x;
+            result = 31 * result + y;
+            result = 31 * result + width;
+            result = 31 * result + height;
+            return result;
         }
     }
 
@@ -58,7 +105,7 @@ public class ImgFilesUtils {
             }
         }
 
-        return new Box(left, top, right, bottom);
+        return new Box(left, top, right - left + 1, bottom - top + 1);
     }
 
     public static Image decode(int[][] pixels, boolean toPcxColors, boolean cleanPixels) {
@@ -268,8 +315,8 @@ public class ImgFilesUtils {
                 pixel[i] = switch (pixel[i]) {
                     case 0xFF00FFFF -> 0x00000000;
                     case 0xFFFF96FF -> 0x00FF0002;
-                    case 0xFF00BFBF -> 0x00FF0001;
-                    case 0xFFE343C0 -> 0x00FF0003;
+                    case 0xFFFF64FF -> 0x00FF0001;
+                    case 0xFFFF32FF -> 0x00FF0003;
                     case 0xFFFF00FF -> 0x00FF0004;
                     case 0xFFFFFF00 -> 0x00FF0010;
                     case 0xFFB400FF -> 0x00FF0014;
@@ -288,12 +335,12 @@ public class ImgFilesUtils {
         }
     }
 
-    private static int d32ToPcxColor(boolean cleanPixels, int pixel) {
+    public static int d32ToPcxColor(boolean cleanPixels, int pixel) {
         return switch (pixel) {
             case 0x00000000 -> 0xFF00FFFF;
             case 0x00FF0002 -> 0xFFFF96FF;
-            case 0x00FF0001 -> 0xFF00BFBF;
-            case 0x00FF0003 -> 0xFFE343C0;
+            case 0x00FF0001 -> 0xFFFF64FF;
+            case 0x00FF0003 -> 0xFFFF32FF;
             case 0x00FF0004 -> 0xFFFF00FF;
             case 0x00FF0010 -> 0xFFFFFF00;
             case 0x00FF0014 -> 0xFFB400FF;
@@ -304,6 +351,7 @@ public class ImgFilesUtils {
 
     public interface Processor<R> {
         R process(ByteBuffer buffer) throws IOException;
+
         default R process(FileChannel channel, ByteBuffer buffer) throws IOException {
             return process(buffer);
         }

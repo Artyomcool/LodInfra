@@ -1,7 +1,10 @@
 package com.github.artyomcool.lodinfra.h3common;
 
+import com.github.artyomcool.lodinfra.ui.ImgFilesUtils;
+
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.IntBuffer;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -46,10 +49,13 @@ public class Bmp extends DefInfo {
         byte[] imageData = new byte[dataOffset - (14 + headerSize + 4 * colorsUsed)];
         data.get(imageData);
 
-
-        int[][] img = new int[height][width];
         DefInfo def = new DefInfo();
+        Group group = new Group(def);
+        def.fullWidth = width;
+        def.fullHeight = height;
+        IntBuffer buffer = IntBuffer.allocate(width * height);
         if (bpp == 24) {
+            def.type = Pcx.TYPE24;
             int lineSize = (width * 3 + 3) / 4 * 4;
 
             int y, end, inc;
@@ -65,26 +71,18 @@ public class Bmp extends DefInfo {
 
             int position = data.position();
             for (int i = 0; y != end; y += inc, i++) {
-                int[] scanline = img[y];
                 data.position(position + lineSize * i);
                 for (int x = 0; x < width; x++) {
                     int b = data.get() & 0xff;
                     int g = data.get() & 0xff;
                     int r = data.get() & 0xff;
-                    scanline[x] = 0xff000000 | r << 16 | g << 8 | b;
+                    buffer.put(y * width + x, 0xff000000 | r << 16 | g << 8 | b);
                 }
             }
-
-            Group group = new Group(def);
-            Frame frame = new Frame(group, () -> img);
-            group.frames.add(frame);
-
-            def.type = Pcx.TYPE24;
-            def.fullWidth = width;
-            def.fullHeight = height;
-            def.groups.add(group);
         } else {
+            def.type = Pcx.TYPE8;
             int[] palette = new int[colorsUsed];
+            def.palette = palette;
             for (int i = 0; i < colorsUsed; i++) {
                 int b = data.get() & 0xff;
                 int g = data.get() & 0xff;
@@ -110,29 +108,22 @@ public class Bmp extends DefInfo {
             int position = data.position();
 
             for (int i = 0; y != end; y += inc, i++) {
-                int[] scanline = img[i];
                 data.position(position + lineSize * y);
                 for (int x = 0; x < width; x++) {
-                    scanline[x] = palette[data.get() & 0xff];
+                    buffer.put(palette[data.get() & 0xff]);
                 }
             }
-
-            Group group = new Group(def);
-            Frame frame = new Frame(group, () -> img);
-            group.frames.add(frame);
-
-            def.type = Pcx.TYPE8;
-            def.fullWidth = width;
-            def.fullHeight = height;
-            def.palette = palette;
-            def.groups.add(group);
+            buffer.flip();
         }
+
+        Frame frame = new Frame(group, width, height, buffer);
+        group.frames.add(frame);
+        def.groups.add(group);
 
         return def;
     }
 
     public static ByteBuffer pack(Frame frame) {
-        int[][] image = frame.decodeFrame();
         int[] palette = frame.group.def.palette;
 
         int width = frame.group.def.fullWidth;
@@ -168,7 +159,7 @@ public class Bmp extends DefInfo {
             for (int y = height - 1; y >= 0; y--) {
                 int x;
                 for (x = 0; x < width; x++) {
-                    int color = image[y][x];
+                    int color = frame.color(x, y);
                     byteBuffer.put((byte) (color >>> 0));
                     byteBuffer.put((byte) (color >>> 8));
                     byteBuffer.put((byte) (color >>> 16));
@@ -215,8 +206,7 @@ public class Bmp extends DefInfo {
             for (int y = height - 1; y >= 0; y--) {
                 int x;
                 for (x = 0; x < width; x++) {
-                    int color = image[y][x];
-                    byteBuffer.put(paletteMap.get(color));
+                    byteBuffer.put(paletteMap.get(frame.color(x, y)));
                 }
                 for (int i = x * 3; i < rowSize; i++) {
                     byteBuffer.put((byte) 0);

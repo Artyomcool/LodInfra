@@ -19,15 +19,24 @@ import javafx.scene.shape.SVGPath;
 import javafx.stage.Modality;
 import javafx.stage.Stage;
 
+import java.nio.IntBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 import static com.github.artyomcool.lodinfra.ui.ImgFilesUtils.colorDifference;
 
 public class DefCompareView extends VBox {
+    private static final Executor LOADER = Executors.newSingleThreadExecutor(r -> {
+        Thread thread = new Thread(r, "Preview node thread");
+        thread.setDaemon(true);
+        thread.setUncaughtExceptionHandler((thread1, throwable) -> throwable.printStackTrace());
+        return thread;
+    });
     private final DefView local = new DefView();
     private final DefControl localControl = new DefControl(local);
     private final DefView remote = new DefView();
@@ -45,7 +54,8 @@ public class DefCompareView extends VBox {
         expand.setOnAction(e -> expand());
     }
 
-    private List<Boolean> changes = new ArrayList<>();
+    private Future<?> previousLoad = CompletableFuture.completedFuture(null);
+    private Object token = new Object();
 
     public DefCompareView() {
         setSpacing(2);
@@ -87,18 +97,42 @@ public class DefCompareView extends VBox {
     }
 
     public void setImages(Path local, Path remote) {
-        DefInfo localDef = load(local);
-        DefInfo remoteDef = load(remote);
-        changes = new ArrayList<>();
-        DefInfo diffDef = makeDiff(localDef, remoteDef, changes);
-        diffControl.setHeatmap(changes);
-        allControl.setHeatmap(changes);
+        previousLoad.cancel(false);
+        this.local.loading();
+        this.remote.loading();
+        this.diff.loading();
 
-        this.local.setDef(localDef);
-        this.remote.setDef(remoteDef);
-        this.diff.setDef(diffDef);
+        Object token = new Object();
+        this.token = token;
+        previousLoad = CompletableFuture.runAsync(() -> {
+            try {
+                DefInfo localDef = load(local);
+                DefInfo remoteDef = load(remote);
 
-        expand.setVisible(local != null);
+                DefInfo diffDef = makeDiff(localDef, remoteDef);
+
+                Platform.runLater(() -> {
+                    if (token != DefCompareView.this.token) {
+                        return;
+                    }
+
+                    this.local.setDef(localDef);
+                    this.remote.setDef(remoteDef);
+                    this.diff.setDef(diffDef);
+
+                    localControl.refreshImage();
+                    remoteControl.refreshImage();
+                    diffControl.refreshImage();
+                    allControl.refreshImage();
+
+                    expand.setVisible(local != null);
+                });
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }, LOADER);
+
+        expand.setVisible(false);
     }
 
     public void start() {
@@ -110,7 +144,7 @@ public class DefCompareView extends VBox {
     }
 
     public void expand() {
-        DefPane root = new DefPane();
+        DefEditor root = new DefEditor();
         root.setDef(local.getDef(), local.getCurrentFrame());
         Stage stage = new Stage();
         Scene scene = new Scene(root);
@@ -155,7 +189,7 @@ public class DefCompareView extends VBox {
         return null;
     }
 
-    private DefInfo makeDiff(DefInfo one, DefInfo two, List<Boolean> outChanges) {
+    private DefInfo makeDiff(DefInfo one, DefInfo two) {
         if (one == null) {
             one = new DefInfo();
         }
@@ -198,66 +232,49 @@ public class DefCompareView extends VBox {
             for (int j = 0; j < Math.max(oneFrames, twoFrames); j++) {
                 DefInfo.Frame oneFrame = oneFrames > j ? oneGroup.frames.get(j) : null;
                 DefInfo.Frame twoFrame = twoFrames > j ? twoGroup.frames.get(j) : null;
-                int frameIndex = outChanges.size();
-                outChanges.add(false);
-                DefInfo.FrameData frameData = () -> {
-                    boolean notified = false;
-                    int[][] onePixels = oneFrame == null ? new int[0][0] : oneFrame.decodeFrame();
-                    int[][] twoPixels = twoFrame == null ? new int[0][0] : twoFrame.decodeFrame();
-                    int height = Math.max(onePixels.length, twoPixels.length);
-                    int width = height == 0 ? 0 : Math.max(
-                            onePixels.length == 0 ? 0 : onePixels[0].length,
-                            twoPixels.length == 0 ? 0 : twoPixels[0].length
-                    );
-                    int[][] resPixels = new int[height][width];
-                    for (int y = 0; y < height; y++) {
-                        int[] oneScan = onePixels.length > y ? onePixels[y] : new int[0];
-                        int[] twoScan = twoPixels.length > y ? twoPixels[y] : new int[0];
-                        int[] resScan = resPixels[y];
-                        for (int x = 0; x < width; x++) {
-                            int d = colorDifference(
-                                    oneScan.length > x ? oneScan[x] : 0,
-                                    twoScan.length > x ? twoScan[x] : 0
-                            );
-                            if (!notified && d != 0) {
-                                Platform.runLater(() -> notifyChanges(outChanges, frameIndex));
-                                notified = true;
-                            }
-                            if (d == 0) {
-                                d = 0xff00ffff;
-                            } else if (d < 0x10) {
-                                d = 256 / 16 * d;
-                                d = 0xff000000 | d << 8;
-                            } else if (d < 0x50) {
-                                d = 256 / 0x40 * (d - 0x10);
-                                d = 0xff00ff00 | d << 16;
-                            } else if (d < 0x90) {
-                                d = 256 / 0x40 * (d - 0x50);
-                                d = 0xffff0000 | (255 - d) << 8;
-                            } else {
-                                d = (d - 0x90) * 2;
-                                d = 0xffff0000 | d;
-                            }
-                            resScan[x] = d;
-                        }
+                boolean hasChanges = false;
+
+                int w1 = oneFrame != null ? oneFrame.fullWidth : 0;
+                int w2 = twoFrame != null ? twoFrame.fullWidth : 0;
+                int h1 = oneFrame != null ? oneFrame.fullHeight : 0;
+                int h2 = twoFrame != null ? twoFrame.fullHeight : 0;
+
+                int w = Math.max(w1, w2);
+                int h = Math.max(h1, h2);
+
+                IntBuffer b1 = oneFrame == null ? IntBuffer.allocate(w * h) : oneFrame.pixelsWithSize(w, h);
+                IntBuffer b2 = twoFrame == null ? IntBuffer.allocate(w * h) : twoFrame.pixelsWithSize(w, h);
+
+                IntBuffer br = IntBuffer.allocate(w * h);
+                for (int i = w * h - 1; i >= 0; i--) {
+                    int d = colorDifference(b1.get(i), b2.get(i));
+                    if (d != 0) {
+                        hasChanges = true;
                     }
-                    return resPixels;
-                };
-                DefInfo.Frame diffFrame = new DefInfo.Frame(group, frameData);
+                    if (d == 0) {
+                        d = 0xff00ffff;
+                    } else if (d < 0x10) {
+                        d = 256 / 16 * d;
+                        d = 0xff000000 | d << 8;
+                    } else if (d < 0x50) {
+                        d = 256 / 0x40 * (d - 0x10);
+                        d = 0xff00ff00 | d << 16;
+                    } else if (d < 0x90) {
+                        d = 256 / 0x40 * (d - 0x50);
+                        d = 0xffff0000 | (255 - d) << 8;
+                    } else {
+                        d = (d - 0x90) * 2;
+                        d = 0xffff0000 | d;
+                    }
+                    br.put(i, d);
+                }
+                DefInfo.Frame diffFrame = new DefInfo.Frame(group, w, h, br);
+                diffFrame.compression = hasChanges ? -1 : -2;
                 group.frames.add(diffFrame);
             }
             result.groups.add(group);
         }
         return result;
-    }
-
-    private void notifyChanges(List<Boolean> changes, int frameIndex) {
-        if (this.changes != changes) {
-            return;
-        }
-        changes.set(frameIndex, true);
-        diffControl.setHeatmap(changes);
-        allControl.setHeatmap(changes);
     }
 
     private static Node expandIcon() {

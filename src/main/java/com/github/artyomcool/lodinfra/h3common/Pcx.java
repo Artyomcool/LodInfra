@@ -1,7 +1,10 @@
 package com.github.artyomcool.lodinfra.h3common;
 
+import com.github.artyomcool.lodinfra.ui.ImgFilesUtils;
+
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.IntBuffer;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -22,14 +25,13 @@ public class Pcx extends DefInfo {
     }
 
     public static DefInfo load24(ByteBuffer buffer, int width, int height) {
-        int[][] result = new int[height][width];
+        IntBuffer pixels = IntBuffer.allocate(width * height);
         for (int y = 0; y < height; y++) {
-            int[] scanline = result[y];
             for (int x = 0; x < width; x++) {
                 int b = buffer.get() & 0xff;
                 int g = buffer.get() & 0xff;
                 int r = buffer.get() & 0xff;
-                scanline[x] = 0xff000000 | r << 16 | g << 8 | b;
+                pixels.put(0xff000000 | r << 16 | g << 8 | b);
             }
         }
         DefInfo info = new DefInfo();
@@ -40,18 +42,17 @@ public class Pcx extends DefInfo {
         Group group = new Group(info);
         info.groups.add(group);
 
-        Frame frame = new Frame(group, () -> result);
+        Frame frame = new Frame(group, width, height, pixels.flip());
         group.frames.add(frame);
 
         return info;
     }
 
     public static DefInfo load8(ByteBuffer buffer, int width, int height) {
-        int[][] result = new int[height][width];
-        for (int y = 0; y < height; y ++) {
-            int[] scanline = result[y];
+        IntBuffer pixels = IntBuffer.allocate(width * height);
+        for (int y = 0; y < height; y++) {
             for (int x = 0; x < width; x++) {
-                scanline[x] = buffer.get() & 0xff;
+                pixels.put(buffer.get() & 0xff);
             }
         }
 
@@ -62,11 +63,10 @@ public class Pcx extends DefInfo {
             int b = buffer.get() & 0xff;
             palette[i] = 0xff000000 | r << 16 | g << 8 | b;
         }
-        for (int y = 0; y < height; y ++) {
-            int[] scanline = result[y];
-            for (int x = 0; x < width; x++) {
-                scanline[x] = palette[scanline[x]];
-            }
+
+        int[] array = pixels.array();
+        for (int i = 0; i < array.length; i++) {
+            array[i] = palette[array[i]];
         }
 
         DefInfo info = new DefInfo();
@@ -78,23 +78,21 @@ public class Pcx extends DefInfo {
         Group group = new Group(info);
         info.groups.add(group);
 
-        Frame frame = new Frame(group, () -> result);
-        group.frames.add(frame);
+        group.frames.add(new Frame(group, width, height, pixels.flip()));
 
         return info;
     }
 
     public static ByteBuffer pack(Frame frame) {
-        DefInfo def = frame.group.def;
-        int[] palette = def.palette;
+        int[] palette = frame.group.def.palette;
         if (palette != null) {
-            int size = def.fullWidth * def.fullHeight;
+            int size = frame.fullWidth * frame.fullHeight;
             ByteBuffer buffer = ByteBuffer.allocate(12 + 256 + size)
                     .order(ByteOrder.LITTLE_ENDIAN);
             buffer
                     .putInt(size)
-                    .putInt(def.fullWidth)
-                    .putInt(def.fullHeight);
+                    .putInt(frame.fullWidth)
+                    .putInt(frame.fullHeight);
 
             Map<Integer, Byte> paletteIndex = new HashMap<>();
             for (int i = 0; i < palette.length; i++) {
@@ -111,28 +109,24 @@ public class Pcx extends DefInfo {
                 paletteIndex.put(c, (byte)i);
             }
 
-            int[][] pixels = frame.decodeFrame();
-            for (int y = 0; y < def.fullHeight; y ++) {
-                int[] scanline = pixels[y];
-                for (int x = 0; x < def.fullWidth; x++) {
-                    buffer.put(paletteIndex.get(scanline[x]));
+            for (int y = 0; y < frame.fullHeight; y ++) {
+                for (int x = 0; x < frame.fullWidth; x++) {
+                    buffer.put(paletteIndex.get(frame.color(x, y)));
                 }
             }
             return buffer;
         } else {
-            int size = def.fullWidth * def.fullHeight * 3;
+            int size = frame.fullWidth * frame.fullHeight * 3;
             ByteBuffer buffer = ByteBuffer.allocate(12 + size)
                     .order(ByteOrder.LITTLE_ENDIAN);
             buffer
                     .putInt(size)
-                    .putInt(def.fullWidth)
-                    .putInt(def.fullHeight);
+                    .putInt(frame.fullWidth)
+                    .putInt(frame.fullHeight);
 
-            int[][] pixels = frame.decodeFrame();
-            for (int y = 0; y < def.fullHeight; y ++) {
-                int[] scanline = pixels[y];
-                for (int x = 0; x < def.fullWidth; x++) {
-                    int c = scanline[x];
+            for (int y = 0; y < frame.fullHeight; y ++) {
+                for (int x = 0; x < frame.fullWidth; x++) {
+                    int c = frame.color(x, y);
                     int r = (c >> 16) & 0xff;
                     int g = (c >> 8) & 0xff;
                     int b = c & 0xff;

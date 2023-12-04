@@ -2,10 +2,12 @@ package com.github.artyomcool.lodinfra.h3common;
 
 import ar.com.hjg.pngj.*;
 import ar.com.hjg.pngj.chunks.PngChunkPLTE;
+import com.github.artyomcool.lodinfra.ui.ImgFilesUtils;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
+import java.nio.IntBuffer;
 
 public class Png extends DefInfo {
 
@@ -26,7 +28,7 @@ public class Png extends DefInfo {
             }
         }
 
-        int[][] pixels = new int[def.fullHeight][def.fullWidth];
+        IntBuffer pixels = IntBuffer.allocate(def.fullWidth * def.fullHeight);
 
         IImageLineSet<? extends IImageLine> rows = pngReader.readRows();
         for (int row = 0; row < rows.size(); row++) {
@@ -34,38 +36,39 @@ public class Png extends DefInfo {
             ImageLineByte lineByte = line instanceof ImageLineByte ? (ImageLineByte) line : null;
             ImageLineInt lineInt = line instanceof ImageLineInt ? (ImageLineInt) line : null;
 
-            int[] scanline = pixels[row];
             for (int column = 0; column < pngReader.imgInfo.cols; column++) {
                 if (plte == null) {
                     int pixelARGB8 = ImageLineHelper.getPixelARGB8(line, column);
-                    scanline[column] = pixelARGB8;
+                    pixels.put(pixelARGB8);
                 } else {
-                    scanline[column] = def.palette[lineByte != null ? lineByte.getElem(column) : lineInt.getElem(column) & 0xff];
+                    int color = lineByte != null ? lineByte.getElem(column) : lineInt.getElem(column) & 0xff;
+                    pixels.put(def.palette[color]);
                 }
             }
         }
 
+        ImgFilesUtils.premultiply(pixels.array());
+
         Group group = new Group(def);
-        Frame frame = new Frame(group, () -> pixels);
+        Frame frame = new Frame(group, def.fullWidth, def.fullHeight, pixels.flip());
         group.frames.add(frame);
         def.groups.add(group);
 
         return def;
     }
 
+    // TODO verify palette
     public static ByteBuffer pack(Frame frame) {
         DefInfo def = frame.group.def;
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         boolean alpha = def.type == D32.TYPE || def.type == P32.TYPE;
-        ImageInfo header = new ImageInfo(def.fullWidth, def.fullHeight, 8, alpha, false, def.palette != null);
+        ImageInfo header = new ImageInfo(frame.fullWidth, frame.fullHeight, 8, alpha, false, def.palette != null);
         PngWriter pngWriter = new PngWriter(out, header);
 
-        int[][] pixels = def.groups.get(0).frames.get(0).decodeFrame();
-        for (int y = 0; y < def.fullHeight; y++) {
+        for (int y = 0; y < frame.fullHeight; y++) {
             ImageLineByte line = new ImageLineByte(header);
-            int[] scanline = pixels[y];
-            for (int x = 0; x < def.fullWidth; x++) {
-                int color = scanline[x];
+            for (int x = 0; x < frame.fullWidth; x++) {
+                int color = frame.color(x, y);
                 line.getScanline()[x * 4] = (byte) (color >>> 0);
                 line.getScanline()[x * 4 + 1] = (byte) (color >>> 8);
                 line.getScanline()[x * 4 + 2] = (byte) (color >>> 16);

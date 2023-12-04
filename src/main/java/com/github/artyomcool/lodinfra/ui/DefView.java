@@ -1,36 +1,23 @@
 package com.github.artyomcool.lodinfra.ui;
 
 import com.github.artyomcool.lodinfra.h3common.DefInfo;
-import javafx.application.Platform;
-import javafx.scene.image.Image;
-import javafx.scene.image.ImageView;
+import javafx.scene.image.*;
 import javafx.scene.text.Text;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Executor;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
+import java.util.*;
+import java.util.function.Function;
 
 public class DefView extends ImageView {
-    public static final Executor EXECUTOR = Executors.newSingleThreadExecutor(r -> {
-        Thread thread = new Thread(r, "Preview node thread");
-        thread.setDaemon(true);
-        return thread;
-    });
 
     private static final Image LOADING = new Text("Loading").snapshot(null, null);
     private static final Image EMPTY = new Text("Empty").snapshot(null, null);
 
     private DefInfo def;
+    private Runnable onChanged = () -> {
+    };
 
-    private Future<?> previousLoad = CompletableFuture.completedFuture(null);
-    private Runnable onChanged = () -> {};
-
-    private final Map<int[][], Image> loaded = new HashMap<>();
+    private final Map<DefInfo.Frame, Image> mapping = new IdentityHashMap<>();
+    private final Map<DefInfo.Frame, Image> originalMapping = new IdentityHashMap<>();
     private final List<DefInfo.Frame> frames = new ArrayList<>();
     private final List<Integer> frameIndexToFameGroup = new ArrayList<>();
     private final Map<Integer, Integer> frameGroupToFrameIndex = new HashMap<>();
@@ -52,12 +39,26 @@ public class DefView extends ImageView {
                     frameIndexToFameGroup.add(frameGroup);
                     frameGroupToFrameIndex.put(frameGroup, frames.size());
                     frames.add(frame);
+                    WritableImage image = new WritableImage(new PixelBuffer<>(frame.fullWidth, frame.fullHeight, frame.pixels, PixelFormat.getIntArgbPreInstance()));
+                    mapping.put(frame, image);
+                    originalMapping.put(frame, image);
                 }
             }
         }
 
-        reload(def);
-        onChanged.run();
+        updateFrame();
+    }
+
+    public void setTransformation(Function<Image, Image> transform) {
+        for (Map.Entry<DefInfo.Frame, Image> entry : originalMapping.entrySet()) {
+            mapping.put(entry.getKey(), transform.apply(entry.getValue()));
+        }
+        setImage(currentImage());
+    }
+
+    public void loading() {
+        setDef(null);
+        setImage(LOADING);
     }
 
     public void addOnChangedListener(Runnable runnable) {
@@ -66,51 +67,6 @@ public class DefView extends ImageView {
             prev.run();
             runnable.run();
         };
-    }
-
-    private void reload(DefInfo def) {
-        previousLoad.cancel(false);
-        if (def != null) {
-            boolean needLoad = false;
-            a: for (DefInfo.Group group : def.groups) {
-                for (DefInfo.Frame frame : group.frames) {
-                    if (frame.cachedData == null) {
-                        needLoad = true;
-                        break a;
-                    }
-                    if (!loaded.containsKey(frame.cachedData)) {
-                        needLoad = true;
-                        break a;
-                    }
-                }
-            }
-            if (!needLoad) {
-                Map<int[][], Image> images = new HashMap<>();
-                for (DefInfo.Group group : def.groups) {
-                    for (DefInfo.Frame frame : group.frames) {
-                        images.put(frame.cachedData, loaded.get(frame.cachedData));
-                    }
-                }
-                notifyLoaded(def, images);
-                return;
-            }
-            loaded.clear();
-            setImage(LOADING);
-        } else {
-            loaded.clear();
-            setImage(EMPTY);
-            return;
-        }
-        previousLoad = CompletableFuture.runAsync(() -> {
-            Map<int[][], Image> images = new HashMap<>();
-            for (DefInfo.Group group : def.groups) {
-                for (DefInfo.Frame frame : group.frames) {
-                    images.computeIfAbsent(frame.decodeFrame(), f -> ImgFilesUtils.decode(f, true, false));
-                }
-            }
-
-            Platform.runLater(() -> notifyLoaded(def, images));
-        }, EXECUTOR);
     }
 
     public void prevFrame() {
@@ -152,15 +108,6 @@ public class DefView extends ImageView {
         updateFrame();
     }
 
-    private void notifyLoaded(DefInfo def, Map<int[][], Image> images) {
-        if (this.def != def) {
-            return;
-        }
-        loaded.clear();
-        loaded.putAll(images);
-        updateFrame();
-    }
-
     private void updateFrame() {
         setImage(currentImage());
         onChanged.run();
@@ -171,18 +118,11 @@ public class DefView extends ImageView {
         if (frame == null) {
             return EMPTY;
         }
-        int[][] cachedData = frame.cachedData;
-        if (cachedData == null) {
-            return LOADING;
-        }
-        return loaded.get(cachedData);
+        return mapping.get(frame);
     }
 
     public DefInfo.Frame getCurrentFrame() {
-        if (globalIndex < 0 || globalIndex >= frames.size()) {
-            return null;
-        }
-        return frames.get(globalIndex);
+        return getFrameAtGlobalIndex(globalIndex);
     }
 
     public int getFrame() {
@@ -191,6 +131,7 @@ public class DefView extends ImageView {
         }
         return frameIndexToFameGroup.get(globalIndex) & 0xffff;
     }
+
     public int getGroup() {
         if (globalIndex < 0 || globalIndex >= frameIndexToFameGroup.size()) {
             return 0;
@@ -217,5 +158,12 @@ public class DefView extends ImageView {
 
     public void setFrame(DefInfo.Frame value) {
         setCurrentIndex(frames.indexOf(value));
+    }
+
+    public DefInfo.Frame getFrameAtGlobalIndex(int globalIndex) {
+        if (globalIndex < 0 || globalIndex >= frames.size()) {
+            return null;
+        }
+        return frames.get(globalIndex);
     }
 }

@@ -1,7 +1,10 @@
 package com.github.artyomcool.lodinfra.h3common;
 
+import com.github.artyomcool.lodinfra.ui.ImgFilesUtils;
+
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.IntBuffer;
 
 public class P32 extends Def {
 
@@ -25,16 +28,16 @@ public class P32 extends Def {
         Group group = new Group(def);
         def.groups.add(group);
 
-        Frame frame = new Frame(group, () -> {
-            int[][] image = new int[height][width];
-            buffer.position(imageOffset);
-            for (int j = height - 1; j >= 0; j--) {
-                for (int i = 0; i < width; i++) {
-                    image[j][i] = buffer.getInt();
-                }
+        IntBuffer pixels = IntBuffer.allocate(width * height);
+        for (int yy = height - 1; yy >= 0; yy--) {
+            for (int xx = 0; xx < width; xx++) {
+                pixels.put(yy * width + xx, ImgFilesUtils.d32ToPcxColor(false, buffer.getInt()));
             }
-            return image;
-        });
+        }
+
+        ImgFilesUtils.premultiply(pixels.array());
+
+        Frame frame = new Frame(group, def.fullWidth, def.fullHeight, pixels);
         frame.compression = 0;
         group.frames.add(frame);
 
@@ -42,17 +45,15 @@ public class P32 extends Def {
     }
 
     public static ByteBuffer pack(Frame frame) {
-        DefInfo def = frame.group.def;
-
         int type = TYPE;
         int version = 0;
         int headerSize = 32;
-        int fileSize = 40 + def.fullWidth * def.fullHeight;
+        int fileSize = 40 + frame.fullWidth * frame.fullHeight;
         int imageOffset = 40;
-        int imageSize = def.fullWidth * def.fullHeight;
+        int imageSize = frame.fullWidth * frame.fullHeight;
 
-        int width = def.fullWidth;
-        int height = def.fullHeight;
+        int width = frame.fullWidth;
+        int height = frame.fullHeight;
 
         ByteBuffer buffer = ByteBuffer.allocate(fileSize).order(ByteOrder.LITTLE_ENDIAN);
         buffer
@@ -65,12 +66,10 @@ public class P32 extends Def {
                 .putInt(width)
                 .putInt(height);
 
-        int[][] image = def.groups.get(0).frames.get(0).decodeFrame();
         buffer.position(imageOffset);
         for (int j = height - 1; j >= 0; j--) {
-            int[] scanline = image[j];
             for (int i = 0; i < width; i++) {
-                buffer.putInt(scanline[i]);
+                buffer.putInt(frame.color(i, j));
             }
         }
 

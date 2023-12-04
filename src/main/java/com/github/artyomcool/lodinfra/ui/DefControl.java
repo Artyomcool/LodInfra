@@ -1,5 +1,6 @@
 package com.github.artyomcool.lodinfra.ui;
 
+import com.github.artyomcool.lodinfra.h3common.DefInfo;
 import com.jfoenix.controls.JFXButton;
 import com.jfoenix.controls.JFXSlider;
 import com.jfoenix.controls.JFXToggleNode;
@@ -13,6 +14,8 @@ import javafx.scene.Node;
 import javafx.scene.control.ButtonBase;
 import javafx.scene.control.Skin;
 import javafx.scene.image.ImageView;
+import javafx.scene.image.PixelBuffer;
+import javafx.scene.image.PixelFormat;
 import javafx.scene.image.WritableImage;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
@@ -20,16 +23,18 @@ import javafx.scene.layout.StackPane;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.SVGPath;
 
+import java.nio.IntBuffer;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
 
 public class DefControl extends HBox {
+    private IntBuffer buffer = IntBuffer.allocate(16 * 1024);
+    private WritableImage image = new WritableImage(new PixelBuffer<>(1, 1, buffer, PixelFormat.getIntArgbPreInstance()));
+    private final ImageView heatmap = new ImageView();
     private final DefView imageView;
     private final DefView[] dependent;
     private final JFXButton prevFrame = new JFXButton(null, prevIcon());
     public final JFXToggleNode playPause = new JFXToggleNode();
-    private List<Boolean> changes = Collections.emptyList();
 
     {
         playPause.setGraphic(playIcon());
@@ -57,9 +62,11 @@ public class DefControl extends HBox {
             return new JFXSliderSkin(this) {
                 StackPane track;
                 StackPane thumb;
+
                 {
-                    getChildren().add(0, heatmap);
                     heatmap.setSmooth(false);
+                    heatmap.setImage(image);
+                    getChildren().add(0, heatmap);
 
                     track = (StackPane) getSkinnable().lookup(".track");
                     thumb = (StackPane) getSkinnable().lookup(".thumb");
@@ -69,15 +76,20 @@ public class DefControl extends HBox {
                 protected void layoutChildren(double x, double y, double w, double h) {
                     super.layoutChildren(x, y, w, h);
                     double tw = thumb.getWidth();
-                    heatmap.setFitWidth(w - tw + 0.5);
-                    heatmap.setFitHeight(h);
-                    heatmap.resizeRelocate(tw / 2, 0, w - tw + 0.5, h);
+
+                    if (image.getWidth() != (w - tw) || image.getHeight() != h) {
+                        if (buffer.capacity() < w * h) {
+                            buffer = IntBuffer.allocate((int) (w * h * 1.2));
+                        }
+                        image = new WritableImage(new PixelBuffer<>((int) (w - tw), (int) h, buffer, PixelFormat.getIntArgbPreInstance()));
+                        refreshImage();
+                    }
+                    heatmap.resizeRelocate(tw / 2, 0, w - tw, h);
                 }
             };
         }
     };
-    private final ImageView heatmap = new ImageView();
-    private WritableImage heatmapImg = new WritableImage(1, 1);
+
     private boolean sliderChanging = false;
 
     public DefControl(DefView imageView, DefView... dependent) {
@@ -140,13 +152,45 @@ public class DefControl extends HBox {
         int i = imageView.getGlobalIndex();
         int oldI = i;
         do {
-            i = (i + 1) % changes.size();
-            if (changes.get(i)) {
+            i = (i + 1) % (imageView.getMaxIndex() + 1);
+            DefInfo.Frame frame = imageView.getFrameAtGlobalIndex(i);
+            if (frame.compression == -1) {
                 break;
             }
         } while (oldI != i);
         imageView.setCurrentIndex(i);
         playPause.setSelected(false);
+    }
+
+    public void refreshImage() {
+        int size = imageView.getMaxIndex() + 1;
+        slider.setVisible(size > 1);
+
+        boolean hasChange = false;
+        DefInfo.Group prev = null;
+        Arrays.fill(buffer.array(), 0);
+        for (int i = 0; i < size; i++) {
+            int w = (int) image.getWidth();
+            int h = (int) image.getHeight();
+            int x = w * i / size;
+            DefInfo.Frame frame = imageView.getFrameAtGlobalIndex(i);
+            boolean change = frame.compression == -1;
+            if (change) {
+                hasChange = true;
+                for (int y = 0; y < h / 2; y++) {
+                    buffer.put(x + y * w, 0xffff6600);
+                }
+            }
+            if (frame.group != prev) {
+                for (int y = h / 2; y < h; y++) {
+                    buffer.put(x + y * w, 0xff6666cc);
+                }
+            }
+            prev = frame.group;
+        }
+
+        nextDiffFrame.setVisible(size > 1 && hasChange);
+        heatmap.setImage(image);
     }
 
     private static Node prevIcon() {
@@ -187,24 +231,5 @@ public class DefControl extends HBox {
         path.setScaleX(1d / 32);
         path.setScaleY(1d / 32);
         return new Group(path);
-    }
-
-    public void setHeatmap(List<Boolean> changes) {
-        this.changes = changes;
-        slider.setVisible(changes.size() > 1);
-        if (heatmapImg.getWidth() != changes.size()) {
-            heatmapImg = new WritableImage(Math.max(1, changes.size()), 1);
-        }
-        boolean hasChange = false;
-        int x = 0;
-        for (Boolean change : changes) {
-            if (change) {
-                hasChange = true;
-            }
-            heatmapImg.getPixelWriter().setArgb(x++, 0, change ? 0xffff0000 : 0x00ff0000);
-        }
-
-        heatmap.setImage(heatmapImg);
-        nextDiffFrame.setVisible(changes.size() > 1 && hasChange);
     }
 }

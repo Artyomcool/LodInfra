@@ -1,9 +1,11 @@
 package com.github.artyomcool.lodinfra.h3common;
 
-import java.nio.Buffer;
+import com.github.artyomcool.lodinfra.ui.ImgFilesUtils;
+
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.IntBuffer;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Map;
 
@@ -54,30 +56,34 @@ public class D32 extends DefInfo {
             position = buffer.position();
             for (int j = 0; j < framesCount; j++) {
                 int offset = buffer.getInt(position + j * 4);
-                DefInfo.Frame frame = new DefInfo.Frame(group, () -> {
-                    ByteBuffer bf = buffer.duplicate().order(ByteOrder.LITTLE_ENDIAN).position(offset);
-                    int frameHeaderSize = bf.getInt();
-                    int imageSize = bf.getInt();
 
-                    int fullWidth = bf.getInt();
-                    int fullHeight = bf.getInt();
+                ByteBuffer bf = buffer.duplicate().order(ByteOrder.LITTLE_ENDIAN).position(offset);
+                int frameHeaderSize = bf.getInt();
+                int imageSize = bf.getInt();
 
-                    int width = bf.getInt();
-                    int height = bf.getInt();
-                    int x = bf.getInt();
-                    int y = bf.getInt();
+                int fullWidth = bf.getInt();
+                int fullHeight = bf.getInt();
 
-                    int frameInfoSize = bf.getInt();
-                    int frameDrawType = bf.getInt();
+                int width = bf.getInt();
+                int height = bf.getInt();
+                int x = bf.getInt();
+                int y = bf.getInt();
 
-                    int[][] image = new int[fullHeight][fullWidth];
-                    for (int yy = height + y - 1; yy >= y; yy--) {
-                        for (int xx = x; xx < x + width; xx++) {
-                            image[yy][xx] = bf.getInt();
-                        }
+                int frameInfoSize = bf.getInt();
+                int frameDrawType = bf.getInt();
+
+                IntBuffer pixels = IntBuffer.allocate(fullWidth * fullHeight);
+                int[] pixArrays = pixels.array();
+                Arrays.fill(pixArrays, SPEC_COLORS[0]);
+                for (int yy = height - 1; yy >= 0; yy--) {
+                    for (int xx = 0; xx < width; xx++) {
+                        pixArrays[(yy + y) * fullWidth + xx + x] = ImgFilesUtils.d32ToPcxColor(false, bf.getInt());
                     }
-                    return image;
-                });
+                }
+
+                ImgFilesUtils.premultiply(pixels.array());
+
+                DefInfo.Frame frame = new DefInfo.Frame(group, fullWidth, fullHeight, pixels);
                 frame.name = names[j];
                 frame.frameDrawType = buffer.getInt(offset + 36);
                 group.frames.add(frame);
@@ -120,7 +126,7 @@ public class D32 extends DefInfo {
         }
 
         for (FrameInfo f : new HashSet<>(links.values())) {
-            totalFramesDataSize += f.packedFrame.width * f.packedFrame.height * 4;
+            totalFramesDataSize += f.packedFrame.box.width * f.packedFrame.box.height * 4;
         }
 
         int framesHeaderSize = 40;
@@ -167,18 +173,18 @@ public class D32 extends DefInfo {
                     buffer.position(framesOffset);
 
                     int frameHeaderSize = 40;
-                    int imageSize = info.packedFrame.width * info.packedFrame.height * 4;
+                    int imageSize = info.packedFrame.box.width * info.packedFrame.box.height * 4;
 
-                    int fw = info.packedFrame.fullWidth;
-                    int fh = info.packedFrame.fullHeight;
+                    int fw = info.packedFrame.frame.fullWidth;
+                    int fh = info.packedFrame.frame.fullHeight;
 
-                    int width = info.packedFrame.width;
-                    int height = info.packedFrame.height;
-                    int x = info.packedFrame.x;
-                    int y = info.packedFrame.y;
+                    int width = info.packedFrame.box.width;
+                    int height = info.packedFrame.box.height;
+                    int x = info.packedFrame.box.x;
+                    int y = info.packedFrame.box.y;
 
                     int frameInfoSize = 8;
-                    int frameDrawType = info.packedFrame.drawType;
+                    int frameDrawType = info.packedFrame.frame.frameDrawType;
 
                     buffer
                             .putInt(frameHeaderSize)
@@ -193,10 +199,10 @@ public class D32 extends DefInfo {
                             .putInt(frameDrawType);
 
                     IntBuffer intBuffer = buffer.asIntBuffer();
-                    int[][] d = info.packedFrame.data;
-                    for (int i = d.length - 1; i >= 0; i--) {
-                        int[] scanline = d[i];
-                        intBuffer.put(scanline, x, width);
+                    for (int j = height - 1; j >= 0; j--) {
+                        for (int i = 0; i < width; i++) {
+                            buffer.putInt(info.packedFrame.color(i, j));
+                        }
                     }
 
                     framesOffset = buffer.position() + intBuffer.position() * 4;
