@@ -31,6 +31,8 @@ public class DefView extends ImageView {
         frames.clear();
         frameIndexToFameGroup.clear();
         frameGroupToFrameIndex.clear();
+        mapping.clear();
+        originalMapping.clear();
         if (def != null) {
             for (DefInfo.Group group : def.groups) {
                 int fi = 0;
