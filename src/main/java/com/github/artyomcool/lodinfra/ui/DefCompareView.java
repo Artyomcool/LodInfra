@@ -48,6 +48,7 @@ public class DefCompareView extends VBox {
     private final AnimationSpeedField animationSpeed = new AnimationSpeedField(this::nextFrame);
 
     private final JFXButton expand = new JFXButton(null, expandIcon());
+    private final Path restore;
 
     {
         expand.setPadding(new Insets(4, 4, 4, 4));
@@ -57,7 +58,8 @@ public class DefCompareView extends VBox {
     private Future<?> previousLoad = CompletableFuture.completedFuture(null);
     private Object token = new Object();
 
-    public DefCompareView() {
+    public DefCompareView(Path restore) {
+        this.restore = restore;
         setSpacing(2);
         HBox speed = new HBox(new Label("Frame rate: "), animationSpeed);
         speed.setAlignment(Pos.CENTER_LEFT);
@@ -144,7 +146,7 @@ public class DefCompareView extends VBox {
     }
 
     public void expand() {
-        DefEditor root = new DefEditor();
+        DefEditor root = new DefEditor(restore);
         root.setDef(local.getDef(), local.getCurrentFrame());
         Stage stage = new Stage();
         Scene scene = new Scene(root);

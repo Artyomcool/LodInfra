@@ -305,6 +305,19 @@ public class ImgFilesUtils {
         return (int) Math.sqrt(delta2);
     }
 
+    public static int colorDifferenceForCompare(int c1, int c2) {
+        int a1 = (c1 >>> 24) & 0xff;
+        int a2 = (c2 >>> 24) & 0xff;
+        int r1 = (c1 >>> 16) & 0xff;
+        int r2 = (c2 >>> 16) & 0xff;
+        int g1 = (c1 >>> 8) & 0xff;
+        int g2 = (c2 >>> 8) & 0xff;
+        int b1 = (c1 >>> 0) & 0xff;
+        int b2 = (c2 >>> 0) & 0xff;
+
+        return diff2(a1, a2) + diff2(r1, r2) + diff2(g1, g2) + diff2(b1, b2);
+    }
+
     private static int diff2(int a, int b) {
         return (a - b) * (a - b);
     }

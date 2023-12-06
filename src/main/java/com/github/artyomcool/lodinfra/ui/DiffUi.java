@@ -1,5 +1,6 @@
 package com.github.artyomcool.lodinfra.ui;
 
+import com.github.artyomcool.lodinfra.Utils;
 import com.github.artyomcool.lodinfra.h3common.LodFile;
 import com.jfoenix.controls.JFXCheckBox;
 import com.jfoenix.controls.JFXTreeTableView;
@@ -30,7 +31,6 @@ import org.controlsfx.control.SegmentedButton;
 
 import java.io.*;
 import java.nio.file.*;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
 import java.text.SimpleDateFormat;
 import java.time.Instant;
@@ -191,7 +191,7 @@ public class DiffUi extends Application {
             StackPane root = new StackPane();
 
             VBox lastFiles = files(root);
-            preview = new DefCompareView();
+            preview = new DefCompareView(localPath.resolve("restore"));
             preview.setPadding(new Insets(4, 4, 2, 4));
             preview.start();
             ScrollPane pane = new ScrollPane(preview);
@@ -994,18 +994,7 @@ public class DiffUi extends Application {
             return null;
         }
         if (buttonType == rewrite) {
-            Files.walkFileTree(path, new SimpleFileVisitor<>() {
-                @Override
-                public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
-                    Files.delete(file);
-                    return FileVisitResult.CONTINUE;
-                }
-
-                @Override
-                public FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
-                    return this.visitFile(dir, null);
-                }
-            });
+            Utils.deleteDir(path);
         }
         if (buttonType == unpack || buttonType == rewrite) {
             try {

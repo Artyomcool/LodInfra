@@ -41,7 +41,7 @@ public class DefView extends ImageView {
                     frameIndexToFameGroup.add(frameGroup);
                     frameGroupToFrameIndex.put(frameGroup, frames.size());
                     frames.add(frame);
-                    WritableImage image = new WritableImage(new PixelBuffer<>(frame.fullWidth, frame.fullHeight, frame.pixels, PixelFormat.getIntArgbPreInstance()));
+                    WritableImage image = new WritableImage(new PixelBuffer<>(frame.fullWidth, frame.fullHeight, frame.pixels.duplicate(), PixelFormat.getIntArgbPreInstance()));
                     mapping.put(frame, image);
                     originalMapping.put(frame, image);
                 }

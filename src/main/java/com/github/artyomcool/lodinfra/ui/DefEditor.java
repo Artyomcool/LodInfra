@@ -1,5 +1,6 @@
 package com.github.artyomcool.lodinfra.ui;
 
+import com.github.artyomcool.lodinfra.Utils;
 import com.github.artyomcool.lodinfra.h3common.Def;
 import com.github.artyomcool.lodinfra.h3common.DefInfo;
 import com.jfoenix.controls.*;
@@ -28,14 +29,37 @@ import javafx.scene.text.TextAlignment;
 import javafx.stage.FileChooser;
 
 import java.io.File;
+import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
+import java.nio.channels.SeekableByteChannel;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
+import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.*;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
 import java.util.function.Function;
+import java.util.stream.Stream;
 
 public class DefEditor extends StackPane {
 
     private static final DataFormat JAVA_FORMAT = new DataFormat("application/x-java-serialized-object");
     private static final String DROP_HINT_STYLE = "-fx-border-color: #eea82f; -fx-border-width: 0 0 2 0; -fx-padding: 3 3 1 3";
+    private static final Executor FILE_EXECUTOR = Executors.newSingleThreadExecutor(r -> {
+        Thread thread = new Thread(r, "DefEditor file thread");
+        thread.setDaemon(true);
+        thread.setUncaughtExceptionHandler((thread1, throwable) -> throwable.printStackTrace());
+        return thread;
+    });
+    private final Path restore;
+    private final int time;
+    private Path currentRestore;
 
     private JFXTreeView<Object> createGroupsAndFrames() {
         JFXTreeView<Object> view = new JFXTreeView<>();
@@ -116,9 +140,7 @@ public class DefEditor extends StackPane {
     private final Button calculatePalette = new Button("Calculate");
 
     {
-        calculatePalette.setOnAction(e -> {
-            calculatePalette();
-        });
+        calculatePalette.setOnAction(e -> calculatePalette());
     }
 
     private TreeCell<Object> dropZone;
@@ -141,7 +163,9 @@ public class DefEditor extends StackPane {
 
     private final List<TreeItem<Object>> frames = new ArrayList<>();
 
-    public DefEditor() {
+    public DefEditor(Path restore) {
+        this.restore = restore;
+        this.time = LocalTime.now().toSecondOfDay();
         VBox top = new VBox(
                 line(0, 0,
                         width(150, line(new Label("Buttons"))),
@@ -330,6 +354,88 @@ public class DefEditor extends StackPane {
     private void putHistory(DefInfo def, String action) {
         history.getItems().add(0, new HistoryItem(def, action));
         history.getSelectionModel().select(0);
+        saveHistory(new ArrayList<>(history.getItems()));
+    }
+
+    private void saveHistory(List<HistoryItem> items) {
+        FILE_EXECUTOR.execute(() -> {
+            try {
+                if (currentRestore == null) {
+                    Files.createDirectories(restore);
+                    LocalDate now = LocalDate.now();
+
+                    try (Stream<Path> pathStream = Files.list(restore)) {
+                        pathStream.forEach(p -> {
+                            LocalDate dateTime = LocalDate.parse(p.getFileName().toString());
+                            if (dateTime.plusMonths(1).isBefore(now)) {
+                                try {
+                                    Utils.deleteDir(p);
+                                } catch (IOException e) {
+                                    throw new RuntimeException(e);
+                                }
+                            }
+                        });
+                    }
+                    currentRestore = restore.resolve(now.toString());
+                    Files.createDirectories(currentRestore);
+                }
+
+                Path file = Files.createTempFile(currentRestore, "backup", ".history");
+                try (SeekableByteChannel backup = Files.newByteChannel(file, StandardOpenOption.WRITE)) {
+                    ByteBuffer buffer = ByteBuffer.allocateDirect(10 * 1024 * 1024);
+                    buffer.putInt(items.size());
+                    for (HistoryItem item : items) {
+                        putString(buffer, item.action);
+                        buffer.putInt(item.def.type);
+                        buffer.putInt(item.def.fullWidth);
+                        buffer.putInt(item.def.fullHeight);
+                        buffer.putInt(item.def.palette == null ? 0 : 256);
+                        for (int color : item.def.palette) {
+                            buffer.putInt(color);
+                        }
+                        buffer.putInt(item.def.groups.size());
+                        for (DefInfo.Group group : item.def.groups) {
+                            buffer.putInt(group.groupIndex);
+                            putString(buffer, group.name);
+                            buffer.putInt(group.frames.size());
+                            for (DefInfo.Frame frame : group.frames) {
+                                buffer.putInt(frame.fullWidth);
+                                buffer.putInt(frame.fullHeight);
+                                putString(buffer, frame.name);
+                                buffer.putInt(frame.compression);
+                                buffer.putInt(frame.frameDrawType);
+                            }
+                        }
+                    }
+
+                    backup.write(buffer.flip());
+                    buffer.clear();
+
+                    for (HistoryItem item : items) {
+                        for (DefInfo.Group group : item.def.groups) {
+                            for (DefInfo.Frame frame : group.frames) {
+                                IntBuffer intBuf = buffer.asIntBuffer();
+                                intBuf.put(frame.pixels.asReadOnlyBuffer());
+                                buffer.position(buffer.position() + intBuf.position() * 4);
+                                backup.write(buffer.flip());
+                                buffer.clear();
+                            }
+                        }
+                    }
+                }
+                Files.move(file, currentRestore.resolve(time + ".history"), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        });
+    }
+
+    private static void putString(ByteBuffer buffer, String data) {
+        byte[] bytes = data == null ? null : data.getBytes(StandardCharsets.UTF_8);
+        buffer.putInt(bytes == null ? -1 : bytes.length);
+        if (bytes != null) {
+            buffer.put(bytes);
+        }
     }
 
     private void autoscroll() {
@@ -374,41 +480,100 @@ public class DefEditor extends StackPane {
             }
         }
         int colorsCount = colors.size() + (battleColors ? 8 : 6);
-        if (colorsCount <= 256) {
-            int[] palette = new int[256];
-            int i = 0;
-            for (; i < (battleColors ? 8 : 6); i++) {
-                palette[i] = DefInfo.SPEC_COLORS[i];
-            }
-            TreeSet<Integer> tree = new TreeSet<>((c1, c2) -> {
-                int r1 = c1 >>> 16 & 0xff;
-                int r2 = c2 >>> 16 & 0xff;
-
-                int g1 = c1 >>> 8 & 0xff;
-                int g2 = c2 >>> 8 & 0xff;
-
-                int b1 = c1 & 0xff;
-                int b2 = c2 & 0xff;
-
-                int y1 = r1 * 3 + b1 + g1 * 4;
-                int y2 = r2 * 3 + b2 + g2 * 4;
-
-                int compare = Integer.compare(y1, y2);
-                return compare == 0 ? Integer.compare(c1, c2) : compare;
-            });
-            tree.addAll(colors);
-            for (Integer c : tree) {
-                palette[i++] = c;
-            }
-            while (i < 256) {
-                palette[i++] = 0xFF000000;
-            }
-            update("Palette", false);
-            preview.getDef().palette = palette;
-            drawPalette(preview.getDef());
-        } else {
+        if (colorsCount > 256) {
             System.err.println("Wrong colors count: " + colorsCount);
+            ButtonType compact = new ButtonType("Compact", ButtonBar.ButtonData.APPLY);
+            Alert alert = new Alert(Alert.AlertType.WARNING, "Palette to large: " + colorsCount, compact, ButtonType.CANCEL);
+            if (alert.showAndWait().orElse(ButtonType.CANCEL) == ButtonType.CANCEL) {
+                return;
+            }
+
+            Map<Integer, Integer> colorReplacements = new HashMap<>();
+            while (colors.size() + (battleColors ? 8 : 6) > 256) {
+                ArrayList<Integer> cc = new ArrayList<>(colors);
+                reducePaletteForOne(cc, colorReplacements);
+                colors = new HashSet<>(cc);
+            }
+
+            for (Map.Entry<Integer, Integer> entry : colorReplacements.entrySet()) {
+                Integer replace = colorReplacements.get(entry.getValue());
+                while (replace != null) {
+                    entry.setValue(replace);
+                    replace = colorReplacements.get(entry.getValue());
+                }
+            }
+
+            for (DefInfo.Group group : def.groups) {
+                for (DefInfo.Frame frame : group.frames) {
+                    IntBuffer from = frame.pixels.duplicate();
+                    IntBuffer to = frame.pixels.duplicate();
+                    while (from.hasRemaining()) {
+                        int c = from.get();
+                        to.put(colorReplacements.getOrDefault(c, c));
+                    }
+                }
+            }
         }
+        int[] palette = new int[256];
+        int i = 0;
+        for (; i < (battleColors ? 8 : 6); i++) {
+            palette[i] = DefInfo.SPEC_COLORS[i];
+        }
+        TreeSet<Integer> tree = new TreeSet<>((c1, c2) -> {
+            int r1 = c1 >>> 16 & 0xff;
+            int r2 = c2 >>> 16 & 0xff;
+
+            int g1 = c1 >>> 8 & 0xff;
+            int g2 = c2 >>> 8 & 0xff;
+
+            int b1 = c1 & 0xff;
+            int b2 = c2 & 0xff;
+
+            int y1 = r1 * 3 + b1 + g1 * 4;
+            int y2 = r2 * 3 + b2 + g2 * 4;
+
+            int compare = Integer.compare(y1, y2);
+            return compare == 0 ? Integer.compare(c1, c2) : compare;
+        });
+        tree.addAll(colors);
+        for (Integer c : tree) {
+            palette[i++] = c;
+        }
+        while (i < 256) {
+            palette[i++] = 0xFF000000;
+        }
+        update("Palette", false, palette);
+    }
+
+    private void reducePaletteForOne(List<Integer> colors, Map<Integer, Integer> colorReplacements) {
+        int diff = Integer.MAX_VALUE;
+        int gc1 = 0;
+        int gc2 = 0;
+
+        for (int i = 0; i < colors.size(); i++) {
+            int c1 = colors.get(i);
+            for (int j = i + 1; j < colors.size(); j++) {
+                int c2 = colors.get(j);
+                int d = ImgFilesUtils.colorDifferenceForCompare(c1, c2);
+                if (d < diff) {
+                    gc1 = c1;
+                    gc2 = c2;
+                    diff = d;
+                }
+            }
+        }
+
+        int a = (((gc1 >>> 24) & 0xff) + ((gc2 >>> 24) & 0xff)) >>> 1;
+        int r = (((gc1 >>> 16) & 0xff) + ((gc2 >>> 16) & 0xff)) >>> 1;
+        int g = (((gc1 >>> 8) & 0xff) + ((gc2 >>> 8) & 0xff)) >>> 1;
+        int b = ((gc1 & 0xff) + (gc2 & 0xff)) >>> 1;
+
+        colors.remove((Integer) gc1);
+        colors.remove((Integer) gc2);
+        int gc = a << 24 | r << 16 | g << 8 | b;
+        colors.add(gc);
+        colorReplacements.put(gc1, gc);
+        colorReplacements.put(gc2, gc);
     }
 
     public void start() {
@@ -515,10 +680,15 @@ public class DefEditor extends StackPane {
     }
 
     private void update(String action, boolean restoreSelection) {
+        update(action, restoreSelection, preview.getDef().palette);
+    }
+
+    private void update(String action, boolean restoreSelection, int[] palette) {
         DefInfo.Frame currentFrame = restoreSelection
                 ? (DefInfo.Frame) groupsAndFrames.getSelectionModel().getSelectedItem().getValue()
                 : null;
         DefInfo def = preview.getDef().cloneBase();
+        def.palette = palette;
         frames.clear();
         for (TreeItem<Object> treeGroup : groupsAndFrames.getRoot().getChildren()) {
             DefInfo.Group group = ((DefInfo.Group) treeGroup.getValue()).cloneBase(def);

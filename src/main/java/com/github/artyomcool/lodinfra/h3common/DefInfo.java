@@ -6,10 +6,9 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.IntBuffer;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Objects;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.*;
 
 public class DefInfo {
 
@@ -145,6 +144,7 @@ public class DefInfo {
         public final int fullWidth;
         public final int fullHeight;
         public final IntBuffer pixels;
+        public final String pixelsSha;
 
         public String name;
         /*
@@ -161,6 +161,22 @@ public class DefInfo {
             this.fullWidth = fullWidth;
             this.fullHeight = fullHeight;
             this.pixels = pixels;
+            this.pixelsSha = sha256(pixels);
+        }
+
+        private static String sha256(IntBuffer pixels) {
+            ByteBuffer buffer = ByteBuffer.allocate(pixels.remaining() * 4);
+            IntBuffer ib = buffer.asIntBuffer();
+            ib.put(pixels.duplicate());
+            MessageDigest digest;
+            try {
+                digest = MessageDigest.getInstance("SHA-256");
+            } catch (NoSuchAlgorithmException e) {
+                throw new RuntimeException(e);
+            }
+            buffer.limit(ib.position() * 4);
+            digest.update(buffer);
+            return HexFormat.of().formatHex(digest.digest());
         }
 
         public static IntBuffer emptyPixels(int w, int h) {
