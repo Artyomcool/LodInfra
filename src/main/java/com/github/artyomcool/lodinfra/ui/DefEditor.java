@@ -43,7 +43,6 @@ import java.time.LocalTime;
 import java.util.*;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
-import java.util.concurrent.ThreadFactory;
 import java.util.function.Function;
 import java.util.stream.Stream;
 
@@ -57,9 +56,11 @@ public class DefEditor extends StackPane {
         thread.setUncaughtExceptionHandler((thread1, throwable) -> throwable.printStackTrace());
         return thread;
     });
+    private static final int NO_HIGHLIGHT = 0x00ffffff;
     private final Path restore;
     private final int time;
     private Path currentRestore;
+    private int highlightedColor = NO_HIGHLIGHT;
 
     private JFXTreeView<Object> createGroupsAndFrames() {
         JFXTreeView<Object> view = new JFXTreeView<>();
@@ -118,9 +119,26 @@ public class DefEditor extends StackPane {
     {
         history.getSelectionModel().selectedItemProperty().addListener((observable, oldValue, newValue) -> {
             if (react && newValue != null) {
-                react = false;
-                setDefInternal(newValue.def, null);
-                react = true;
+                setDefInternal(newValue.def, newValue.def.first());
+            }
+        });
+        history.setOnMouseClicked(m -> {
+            if (m.getClickCount() == 2) {
+                HistoryItem selectedItem = history.getSelectionModel().getSelectedItem();
+                if (selectedItem == null) {
+                    return;
+                }
+                if (m.isControlDown()) {
+                    DefInfo def = selectedItem.def;
+                    setDefInternal(def, def.first());
+                    update("Restore", true);
+                } else {
+                    DefInfo diffDef = DefInfo.makeDiff(
+                            history.getItems().get(0).def,
+                            selectedItem.def
+                    );
+                    setDefInternal(diffDef, diffDef.first());
+                }
             }
         });
     }
@@ -129,11 +147,20 @@ public class DefEditor extends StackPane {
 
     {
         palette.setOnMouseClicked(m -> {
-            if (m.isControlDown()) {
+            if (m.isControlDown() && m.isShiftDown()) {
                 removeHighlight();
                 return;
             }
-            highlightColor(palette.getImage().getPixelReader().getArgb((int) m.getX(), (int) m.getY()));
+            if (m.getClickCount() == 2) {
+                if (m.isControlDown()) {
+                    if (highlightedColor != NO_HIGHLIGHT) {
+                        replaceColor(highlightedColor, palette.getImage().getPixelReader().getArgb((int) m.getX(), (int) m.getY()));
+                    }
+                } else {
+                    highlightColor(palette.getImage().getPixelReader().getArgb((int) m.getX(), (int) m.getY()));
+                }
+                return;
+            }
         });
     }
 
@@ -153,12 +180,20 @@ public class DefEditor extends StackPane {
         fullHeight.setPrefWidth(30);
 
         addGroup.setOnAction(e -> {
-            DefInfo.Group g = new DefInfo.Group(preview.getDef());
+            DefInfo.Group g = new DefInfo.Group(currentDef());
             g.groupIndex = g.def.groups.isEmpty() ? 0 : (g.def.groups.get(g.def.groups.size() - 1).groupIndex + 1);
             TreeItem<Object> item = new TreeItem<>(g);
             groupsAndFrames.getRoot().getChildren().add(item);
             update("New group", true);
         });
+    }
+
+    private DefInfo currentDef() {
+        return preview.getDef();
+    }
+
+    private void setDefToPreview(DefInfo def) {
+        preview.setDef(def);
     }
 
     private final List<TreeItem<Object>> frames = new ArrayList<>();
@@ -283,10 +318,12 @@ public class DefEditor extends StackPane {
         DefInfo def = original.cloneBase();
         for (DefInfo.Group group : original.groups) {
             DefInfo.Group g = group.cloneBase(def);
-            def.groups.add(g);
             for (DefInfo.Frame fr : group.frames) {
-                DefInfo.Frame f = fr.cloneBase(g);
-                g.frames.add(f);
+                if (fr == frame) {
+                    frame = fr.cloneBase(g);
+                } else {
+                    fr.cloneBase(g);
+                }
             }
         }
         setDefInternal(def, frame);
@@ -298,7 +335,7 @@ public class DefEditor extends StackPane {
     }
 
     private void setDefInternal(DefInfo def, DefInfo.Frame frame) {
-        preview.setDef(def);
+        setDefToPreview(def);
         path.setText(def.path == null ? "" : def.path.toString());
         fullWidth.setText(def.fullWidth + "");
         fullHeight.setText(def.fullHeight + "");
@@ -383,6 +420,27 @@ public class DefEditor extends StackPane {
                 Path file = Files.createTempFile(currentRestore, "backup", ".history");
                 try (SeekableByteChannel backup = Files.newByteChannel(file, StandardOpenOption.WRITE)) {
                     ByteBuffer buffer = ByteBuffer.allocateDirect(10 * 1024 * 1024);
+
+                    Set<String> hash = new HashSet<>();
+                    for (HistoryItem item : items) {
+                        for (DefInfo.Group group : item.def.groups) {
+                            for (DefInfo.Frame frame : group.frames) {
+                                if (hash.add(frame.pixelsSha)) {
+                                    putString(buffer, frame.pixelsSha);
+                                    backup.write(buffer.flip());
+                                    buffer.clear();
+
+                                    IntBuffer intBuf = buffer.asIntBuffer();
+                                    intBuf.put(frame.pixels.asReadOnlyBuffer());
+                                    buffer.position(buffer.position() + intBuf.position() * 4);
+                                    backup.write(buffer.flip());
+                                    buffer.clear();
+                                }
+                            }
+                        }
+                    }
+
+                    putString(buffer, "");
                     buffer.putInt(items.size());
                     for (HistoryItem item : items) {
                         putString(buffer, item.action);
@@ -404,24 +462,12 @@ public class DefEditor extends StackPane {
                                 putString(buffer, frame.name);
                                 buffer.putInt(frame.compression);
                                 buffer.putInt(frame.frameDrawType);
+                                putString(buffer, frame.pixelsSha);
                             }
                         }
                     }
 
                     backup.write(buffer.flip());
-                    buffer.clear();
-
-                    for (HistoryItem item : items) {
-                        for (DefInfo.Group group : item.def.groups) {
-                            for (DefInfo.Frame frame : group.frames) {
-                                IntBuffer intBuf = buffer.asIntBuffer();
-                                intBuf.put(frame.pixels.asReadOnlyBuffer());
-                                buffer.position(buffer.position() + intBuf.position() * 4);
-                                backup.write(buffer.flip());
-                                buffer.clear();
-                            }
-                        }
-                    }
                 }
                 Files.move(file, currentRestore.resolve(time + ".history"), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
             } catch (Exception e) {
@@ -446,7 +492,11 @@ public class DefEditor extends StackPane {
         }
         for (Object child : ((TreeViewSkin<?>) skin).getChildren()) {
             if (child instanceof VirtualFlow<?>) {
-                int first = ((VirtualFlow<?>) child).getFirstVisibleCell().getIndex();
+                IndexedCell<?> cell = ((VirtualFlow<?>) child).getFirstVisibleCell();
+                if (cell == null) {
+                    break;
+                }
+                int first = cell.getIndex();
                 int last = ((VirtualFlow<?>) child).getLastVisibleCell().getIndex();
                 if (selectedIndex <= first) {
                     groupsAndFrames.scrollTo(selectedIndex);
@@ -459,7 +509,7 @@ public class DefEditor extends StackPane {
     }
 
     private void calculatePalette() {
-        DefInfo def = preview.getDef();
+        DefInfo def = currentDef();
         Set<Integer> colors = new HashSet<>();
         for (DefInfo.Group group : def.groups) {
             for (DefInfo.Frame frame : group.frames) {
@@ -503,17 +553,54 @@ public class DefEditor extends StackPane {
                 }
             }
 
+            DefInfo clone = def.cloneBase();
+            Object value = groupsAndFrames.getSelectionModel().getSelectedItem().getValue();
+            DefInfo.Frame selectedFrame = null;
             for (DefInfo.Group group : def.groups) {
+                DefInfo.Group groupClone = group.cloneBase(clone);
                 for (DefInfo.Frame frame : group.frames) {
                     IntBuffer from = frame.pixels.duplicate();
-                    IntBuffer to = frame.pixels.duplicate();
+                    IntBuffer to = null;
                     while (from.hasRemaining()) {
                         int c = from.get();
-                        to.put(colorReplacements.getOrDefault(c, c));
+                        Integer replace = colorReplacements.get(c);
+                        if (replace != null) {
+                            if (to == null) {
+                                to = IntBuffer.allocate(frame.pixels.remaining());
+                                to.put(frame.pixels.duplicate());
+                                to.position(from.position() - 1);
+                            }
+                            to.put(replace);
+                        } else {
+                            if (to != null) {
+                                to.put(c);
+                            }
+                        }
+                    }
+
+                    DefInfo.Frame cloneFrame = to == null
+                            ? frame.cloneBase(groupClone)
+                            : frame.cloneBase(groupClone, to.flip());
+                    if (value == frame) {
+                        selectedFrame = cloneFrame;
                     }
                 }
             }
+
+            clone.palette = toPalette(colors, battleColors);
+            setDefInternal(clone, selectedFrame);
+            drawPalette(clone);
+            autoscroll();
+            react = false;
+            putHistory(clone, "Palette compaction");
+            react = true;
+            return;
         }
+        int[] palette = toPalette(colors, battleColors);
+        update("Palette", false, palette, Function.identity());
+    }
+
+    private static int[] toPalette(Set<Integer> colors, boolean battleColors) {
         int[] palette = new int[256];
         int i = 0;
         for (; i < (battleColors ? 8 : 6); i++) {
@@ -542,7 +629,7 @@ public class DefEditor extends StackPane {
         while (i < 256) {
             palette[i++] = 0xFF000000;
         }
-        update("Palette", false, palette);
+        return palette;
     }
 
     private void reducePaletteForOne(List<Integer> colors, Map<Integer, Integer> colorReplacements) {
@@ -571,6 +658,15 @@ public class DefEditor extends StackPane {
         colors.remove((Integer) gc1);
         colors.remove((Integer) gc2);
         int gc = a << 24 | r << 16 | g << 8 | b;
+        for (int specColor : DefInfo.SPEC_COLORS) {
+            if (specColor == gc) {
+                gc |= 0x0100;
+                if (specColor == gc) {
+                    gc &= ~0x0100;
+                }
+                break;
+            }
+        }
         colors.add(gc);
         colorReplacements.put(gc1, gc);
         colorReplacements.put(gc2, gc);
@@ -680,33 +776,30 @@ public class DefEditor extends StackPane {
     }
 
     private void update(String action, boolean restoreSelection) {
-        update(action, restoreSelection, preview.getDef().palette);
+        update(action, restoreSelection, currentDef().palette, Function.identity());
     }
 
-    private void update(String action, boolean restoreSelection, int[] palette) {
+    private void update(String action, boolean restoreSelection, int[] palette, Function<IntBuffer, IntBuffer> frameProcessor) {
         DefInfo.Frame currentFrame = restoreSelection
-                ? (DefInfo.Frame) groupsAndFrames.getSelectionModel().getSelectedItem().getValue()
+                ? (groupsAndFrames.getSelectionModel().getSelectedItem() != null ? (DefInfo.Frame) groupsAndFrames.getSelectionModel().getSelectedItem().getValue() : null)
                 : null;
-        DefInfo def = preview.getDef().cloneBase();
+        DefInfo def = currentDef().cloneBase();
         def.palette = palette;
-        frames.clear();
         for (TreeItem<Object> treeGroup : groupsAndFrames.getRoot().getChildren()) {
             DefInfo.Group group = ((DefInfo.Group) treeGroup.getValue()).cloneBase(def);
             treeGroup.setValue(group);
             for (TreeItem<Object> treeFrame : treeGroup.getChildren()) {
                 DefInfo.Frame prevFrame = (DefInfo.Frame) treeFrame.getValue();
-                DefInfo.Frame frame = prevFrame.cloneBase(group);
+                DefInfo.Frame frame = prevFrame.cloneBase(group, frameProcessor.apply(prevFrame.pixels.duplicate()));
                 if (restoreSelection && currentFrame == prevFrame) {
                     currentFrame = frame;
                 }
                 treeFrame.setValue(frame);
-                group.frames.add(frame);
                 frames.add(treeFrame);
             }
-            def.groups.add(group);
         }
         react = false;
-        preview.setDef(def);
+        setDefToPreview(def);
         if (restoreSelection) {
             preview.setFrame(currentFrame);
         }
@@ -727,9 +820,10 @@ public class DefEditor extends StackPane {
     }
 
     private void highlightColor(int color) {
-        System.out.println("0x" + Integer.toHexString(color).toUpperCase());
+        System.out.println("Color is: 0x" + Integer.toHexString(color).toUpperCase());
+        highlightedColor = color;
         preview.setTransformation(image -> {
-            int multiply = 8;
+            int multiply = 4;
             int width = (int) image.getWidth();
             int height = (int) image.getHeight();
             WritableImage result = new WritableImage(width * multiply, height * multiply);
@@ -743,8 +837,8 @@ public class DefEditor extends StackPane {
                         scanline[dst] = scanline[src];
                     }
                     if (highlight) {
-                        scanline[dst + multiply] = 0xff000000;
-                        scanline[dst + 1] = 0xff000000;
+                        scanline[dst + multiply] = 0xffffff00;
+                        scanline[dst + 1] = 0xffffffff;
                     }
                 }
                 dy++;
@@ -754,7 +848,7 @@ public class DefEditor extends StackPane {
                 for (int i = 0; i < scanline.length; i++) {
                     boolean highlight = color == scanline[i];
                     if (highlight) {
-                        scanline[i] = 0xff000000;
+                        scanline[i] = 0xffff0000;
                     }
                 }
                 result.getPixelWriter().setPixels(0, dy++, scanline.length, 1, format, scanline, 0, scanline.length);
@@ -765,7 +859,26 @@ public class DefEditor extends StackPane {
     }
 
     private void removeHighlight() {
+        highlightedColor = NO_HIGHLIGHT;
         preview.setTransformation(Function.identity());
+    }
+
+    private void replaceColor(int from, int to) {
+        update(Integer.toHexString(from).toUpperCase() + "->" + Integer.toHexString(to).toUpperCase(),
+                true,
+                currentDef().palette,
+                pixels -> {
+                    IntBuffer result = IntBuffer.allocate(pixels.remaining());
+                    while (pixels.hasRemaining()) {
+                        int c = pixels.get();
+                        if (c == from) {
+                            c = to;
+                        }
+                        result.put(c);
+                    }
+                    return result.flip();
+                }
+        );
     }
 
     private static Node groupButtons(Control... nodes) {

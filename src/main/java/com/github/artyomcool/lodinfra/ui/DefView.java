@@ -22,6 +22,7 @@ public class DefView extends ImageView {
     private final List<Integer> frameIndexToFameGroup = new ArrayList<>();
     private final Map<Integer, Integer> frameGroupToFrameIndex = new HashMap<>();
     private int globalIndex;
+    private Function<Image, Image> transform = Function.identity();
 
     public void setDef(DefInfo def) {
         this.def = def;
@@ -42,7 +43,6 @@ public class DefView extends ImageView {
                     frameGroupToFrameIndex.put(frameGroup, frames.size());
                     frames.add(frame);
                     WritableImage image = new WritableImage(new PixelBuffer<>(frame.fullWidth, frame.fullHeight, frame.pixels.duplicate(), PixelFormat.getIntArgbPreInstance()));
-                    mapping.put(frame, image);
                     originalMapping.put(frame, image);
                 }
             }
@@ -52,9 +52,8 @@ public class DefView extends ImageView {
     }
 
     public void setTransformation(Function<Image, Image> transform) {
-        for (Map.Entry<DefInfo.Frame, Image> entry : originalMapping.entrySet()) {
-            mapping.put(entry.getKey(), transform.apply(entry.getValue()));
-        }
+        this.transform = transform;
+        mapping.clear();
         setImage(currentImage());
     }
 
@@ -120,7 +119,15 @@ public class DefView extends ImageView {
         if (frame == null) {
             return EMPTY;
         }
-        return mapping.get(frame);
+        Image image = mapping.get(frame);
+        if (image == null) {
+            image = originalMapping.get(frame);
+            if (image != null) {
+                image = transform.apply(image);
+                mapping.put(frame, image);
+            }
+        }
+        return image;
     }
 
     public DefInfo.Frame getCurrentFrame() {

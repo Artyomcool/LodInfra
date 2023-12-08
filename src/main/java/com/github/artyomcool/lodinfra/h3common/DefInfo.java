@@ -10,6 +10,8 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.*;
 
+import static com.github.artyomcool.lodinfra.ui.ImgFilesUtils.colorDifference;
+
 public class DefInfo {
 
     public static final int[] SPEC_COLORS = new int[]{
@@ -121,6 +123,15 @@ public class DefInfo {
         return def;
     }
 
+    public Frame first() {
+        for (Group group : groups) {
+            for (Frame frame : group.frames) {
+                return frame;
+            }
+        }
+        return null;
+    }
+
     public static class Group {
         public final DefInfo def;
         public int groupIndex;
@@ -135,6 +146,7 @@ public class DefInfo {
             Group group = new Group(def);
             group.groupIndex = groupIndex;
             group.name = name;
+            def.groups.add(group);
             return group;
         }
     }
@@ -164,6 +176,15 @@ public class DefInfo {
             this.pixelsSha = sha256(pixels);
         }
 
+        public Frame(Group group, Frame frame) {
+            this.group = group;
+            this.fullWidth = frame.fullWidth;
+            this.fullHeight = frame.fullHeight;
+            this.name = frame.name;
+            this.pixels = frame.pixels;
+            this.pixelsSha = frame.pixelsSha;
+        }
+
         private static String sha256(IntBuffer pixels) {
             ByteBuffer buffer = ByteBuffer.allocate(pixels.remaining() * 4);
             IntBuffer ib = buffer.asIntBuffer();
@@ -186,10 +207,17 @@ public class DefInfo {
         }
 
         public Frame cloneBase(Group group) {
+            Frame frame = new Frame(group, this);
+            group.frames.add(frame);
+            return frame;
+        }
+
+        public Frame cloneBase(Group group, IntBuffer pixels) {
             Frame frame = new Frame(group, fullWidth, fullHeight, pixels);
             frame.name = name;
             frame.compression = compression;
             frame.frameDrawType = frameDrawType;
+            group.frames.add(frame);
             return frame;
         }
 
@@ -343,5 +371,94 @@ public class DefInfo {
         FrameInfo(PackedFrame packedFrame) {
             this.packedFrame = packedFrame;
         }
+    }
+
+    public static DefInfo makeDiff(DefInfo one, DefInfo two) {
+        if (one == null) {
+            one = new DefInfo();
+        }
+        if (two == null) {
+            two = new DefInfo();
+        }
+        DefInfo result = new DefInfo();
+        result.type = D32.TYPE;
+        result.fullWidth = Math.max(one.fullWidth, two.fullWidth);
+        result.fullHeight = Math.max(one.fullHeight, two.fullHeight);
+
+        int oneSize = one.groups.size();
+        int twoSize = two.groups.size();
+        for (int oneGroupIndex = 0, twoGroupIndex = 0, gid = 0; ; gid++) {
+            DefInfo.Group oneGroup = oneSize > oneGroupIndex ? one.groups.get(oneGroupIndex) : null;
+            DefInfo.Group twoGroup = twoSize > twoGroupIndex ? two.groups.get(twoGroupIndex) : null;
+            if (oneGroup == null && twoGroup == null) {
+                break;
+            }
+            if (oneGroup != null && oneGroup.groupIndex != gid) {
+                oneGroup = null;
+            }
+            if (twoGroup != null && twoGroup.groupIndex != gid) {
+                twoGroup = null;
+            }
+            if (oneGroup == null && twoGroup == null) {
+                continue;
+            }
+            if (oneGroup != null) {
+                oneGroupIndex++;
+            }
+            if (twoGroup != null) {
+                twoGroupIndex++;
+            }
+
+            int oneFrames = oneGroup == null ? 0 : oneGroup.frames.size();
+            int twoFrames = twoGroup == null ? 0 : twoGroup.frames.size();
+            DefInfo.Group group = new DefInfo.Group(result);
+            group.groupIndex = gid;
+            for (int j = 0; j < Math.max(oneFrames, twoFrames); j++) {
+                DefInfo.Frame oneFrame = oneFrames > j ? oneGroup.frames.get(j) : null;
+                DefInfo.Frame twoFrame = twoFrames > j ? twoGroup.frames.get(j) : null;
+                boolean hasChanges = false;
+
+                int w1 = oneFrame != null ? oneFrame.fullWidth : 0;
+                int w2 = twoFrame != null ? twoFrame.fullWidth : 0;
+                int h1 = oneFrame != null ? oneFrame.fullHeight : 0;
+                int h2 = twoFrame != null ? twoFrame.fullHeight : 0;
+
+                int w = Math.max(w1, w2);
+                int h = Math.max(h1, h2);
+
+                IntBuffer b1 = oneFrame == null ? IntBuffer.allocate(w * h) : oneFrame.pixelsWithSize(w, h);
+                IntBuffer b2 = twoFrame == null ? IntBuffer.allocate(w * h) : twoFrame.pixelsWithSize(w, h);
+
+                IntBuffer br = IntBuffer.allocate(w * h);
+                for (int i = w * h - 1; i >= 0; i--) {
+                    int d = colorDifference(b1.get(i), b2.get(i));
+                    if (d != 0) {
+                        hasChanges = true;
+                    }
+                    if (d == 0) {
+                        d = 0xff00ffff;
+                    } else if (d < 0x10) {
+                        d = 256 / 16 * d;
+                        d = 0xff000000 | d << 8;
+                    } else if (d < 0x50) {
+                        d = 256 / 0x40 * (d - 0x10);
+                        d = 0xff00ff00 | d << 16;
+                    } else if (d < 0x90) {
+                        d = 256 / 0x40 * (d - 0x50);
+                        d = 0xffff0000 | (255 - d) << 8;
+                    } else {
+                        d = (d - 0x90) * 2;
+                        d = 0xffff0000 | d;
+                    }
+                    br.put(i, d);
+                }
+                DefInfo.Frame diffFrame = new DefInfo.Frame(group, w, h, br);
+                diffFrame.name = (hasChanges ? "D" : "S") + "_" + (twoFrame == null ? "N" : twoFrame.name) + "->" + (oneFrame == null ? "N" : oneFrame.name);
+                diffFrame.compression = hasChanges ? -1 : -2;
+                group.frames.add(diffFrame);
+            }
+            result.groups.add(group);
+        }
+        return result;
     }
 }
