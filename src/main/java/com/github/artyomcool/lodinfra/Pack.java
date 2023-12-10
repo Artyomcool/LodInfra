@@ -1,5 +1,7 @@
 package com.github.artyomcool.lodinfra;
 
+import com.github.artyomcool.lodinfra.h3common.Def;
+import com.github.artyomcool.lodinfra.h3common.DefInfo;
 import com.github.artyomcool.lodinfra.h3common.LodFile;
 import com.github.artyomcool.lodinfra.ui.DiffUi;
 import com.github.artyomcool.lodinfra.ui.Gui;
@@ -21,6 +23,31 @@ public class Pack {
     private static final String VERSION = "1.5";
 
     public static void main(String[] a) throws IOException {
+        /*if (true) {
+            String lod = "......./h3sprite.lod";
+            LodFile file = LodFile.load(Path.of(lod));
+            Map<Integer, Map<Integer, Set<String>>> typesToCompressions = new HashMap<>();
+            for (LodFile.SubFileMeta subFile : file.subFiles) {
+                if (subFile.nameAsString.endsWith(".def")) {
+                    try {
+                        DefInfo info = Def.load(subFile.asByteBuffer());
+                        Map<Integer, Set<String>> typesToCompression = typesToCompressions.computeIfAbsent(info.type, k -> new HashMap<>());
+                        for (DefInfo.Group group : info.groups) {
+                            for (DefInfo.Frame frame : group.frames) {
+                                typesToCompression.computeIfAbsent(frame.compression, k -> new HashSet<>()).add(frame.fullWidth + "x" + frame.fullHeight);
+                            }
+                        }
+                    } catch (Exception e) {
+                        System.err.println(subFile.nameAsString);
+                        e.printStackTrace();
+                    }
+                }
+            }
+            for (var entry : typesToCompressions.entrySet()) {
+                System.out.println("0x" + Integer.toHexString(entry.getKey()) + " -> " + entry.getValue());
+            }
+            return;
+        }*/
         System.out.println("Version: " + VERSION);
         try {
             String selfPath = ".";
@@ -252,7 +279,7 @@ public class Pack {
                     byte[] data = subFile.asBytes();
 
                     if (name.toLowerCase().endsWith(".pcx")) {
-                        if (data[0] == 0x50 && data[1] == 0x33 && data[2] == 0x32 && data[3] == 0x46){
+                        if (data[0] == 0x50 && data[1] == 0x33 && data[2] == 0x32 && data[3] == 0x46) {
 
                         } else {
                             ImageData png = "bmp".equals(pcxFormat) ? ResourceConverter.toBmp(data) : ResourceConverter.toPng(data);

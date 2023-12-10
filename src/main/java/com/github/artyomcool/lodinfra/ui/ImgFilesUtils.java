@@ -54,74 +54,6 @@ public class ImgFilesUtils {
         return (a << 24) | (r << 16) | (g << 8) | b;
     }
 
-    public static class Box {
-        public final int x, y, width, height;
-
-        public Box(int x, int y, int width, int height) {
-            this.x = x;
-            this.y = y;
-            this.width = width;
-            this.height = height;
-        }
-
-        @Override
-        public boolean equals(Object o) {
-            if (this == o) return true;
-            if (o == null || getClass() != o.getClass()) return false;
-
-            Box box = (Box) o;
-
-            if (x != box.x) return false;
-            if (y != box.y) return false;
-            if (width != box.width) return false;
-            return height == box.height;
-        }
-
-        @Override
-        public int hashCode() {
-            int result = x;
-            result = 31 * result + y;
-            result = 31 * result + width;
-            result = 31 * result + height;
-            return result;
-        }
-    }
-
-    public static Box calculateTransparent(int[][] pixels) {
-        int left = Integer.MAX_VALUE;
-        int top = Integer.MAX_VALUE;
-        int right = Integer.MIN_VALUE;
-        int bottom = Integer.MIN_VALUE;
-
-        for (int y = 0; y < pixels.length; y++) {
-            int[] line = pixels[y];
-            for (int x = 0; x < line.length; x++) {
-                if (line[x] != 0) {
-                    left = Math.min(x, left);
-                    right = Math.max(x, right);
-                    top = Math.min(y, top);
-                    bottom = Math.max(y, bottom);
-                }
-            }
-        }
-
-        return new Box(left, top, right - left + 1, bottom - top + 1);
-    }
-
-    public static Image decode(int[][] pixels, boolean toPcxColors, boolean cleanPixels) {
-        if (toPcxColors) {
-            d32ToPcxColors(pixels, cleanPixels);
-        }
-
-        WritableImage image = new WritableImage(pixels.length == 0 ? 0 : pixels[0].length, pixels.length);
-        for (int y = 0; y < pixels.length; y++) {
-            for (int x = 0; x < pixels[y].length; x++) {
-                image.getPixelWriter().setArgb(x, y, pixels[y][x]);
-            }
-        }
-        return image;
-    }
-
     public static <T> T processFile(Path file, T def, ImgFilesUtils.Processor<T> processor) {
         try {
             String s = file.getFileName().toString();
@@ -322,30 +254,18 @@ public class ImgFilesUtils {
         return (a - b) * (a - b);
     }
 
-    public static void pcxToD32Colors(int[][] pixels) {
-        for (int[] pixel : pixels) {
-            for (int i = 0; i < pixel.length; i++) {
-                pixel[i] = switch (pixel[i]) {
-                    case 0xFF00FFFF -> 0x00000000;
-                    case 0xFFFF96FF -> 0x00FF0002;
-                    case 0xFFFF64FF -> 0x00FF0001;
-                    case 0xFFFF32FF -> 0x00FF0003;
-                    case 0xFFFF00FF -> 0x00FF0004;
-                    case 0xFFFFFF00 -> 0x00FF0010;
-                    case 0xFFB400FF -> 0x00FF0014;
-                    case 0xFF00FF00 -> 0x00FF0012;
-                    default -> pixel[i];
-                };
-            }
-        }
-    }
-
-    public static void d32ToPcxColors(int[][] pixels, boolean cleanPixels) {
-        for (int[] pixel : pixels) {
-            for (int i = 0; i < pixel.length; i++) {
-                pixel[i] = d32ToPcxColor(cleanPixels, pixel[i]);
-            }
-        }
+    public static int pcxToD32Color(int pixel) {
+        return switch (pixel) {
+            case 0xFF00FFFF -> 0x00000000;
+            case 0xFFFF96FF -> 0x00FF0002;
+            case 0xFFFF64FF -> 0x00FF0001;
+            case 0xFFFF32FF -> 0x00FF0003;
+            case 0xFFFF00FF -> 0x00FF0004;
+            case 0xFFFFFF00 -> 0x00FF0010;
+            case 0xFFB400FF -> 0x00FF0014;
+            case 0xFF00FF00 -> 0x00FF0012;
+            default -> pixel;
+        };
     }
 
     public static int d32ToPcxColor(boolean cleanPixels, int pixel) {

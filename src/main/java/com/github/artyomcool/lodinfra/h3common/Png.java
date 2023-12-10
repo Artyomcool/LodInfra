@@ -8,6 +8,8 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
+import java.util.HashMap;
+import java.util.Map;
 
 public class Png extends DefInfo {
 
@@ -24,7 +26,7 @@ public class Png extends DefInfo {
         if (plte != null) {
             def.palette = new int[256];
             for (int i = 0; i < plte.getNentries(); i++) {
-                def.palette[i] = plte.getEntry(i);
+                def.palette[i] = 0xff000000 | plte.getEntry(i);
             }
         }
 
@@ -64,17 +66,35 @@ public class Png extends DefInfo {
         boolean alpha = def.type == D32.TYPE || def.type == P32.TYPE;
         ImageInfo header = new ImageInfo(frame.fullWidth, frame.fullHeight, 8, alpha, false, def.palette != null);
         PngWriter pngWriter = new PngWriter(out, header);
-
-        for (int y = 0; y < frame.fullHeight; y++) {
-            ImageLineByte line = new ImageLineByte(header);
-            for (int x = 0; x < frame.fullWidth; x++) {
-                int color = frame.color(x, y);
-                line.getScanline()[x * 4] = (byte) (color >>> 0);
-                line.getScanline()[x * 4 + 1] = (byte) (color >>> 8);
-                line.getScanline()[x * 4 + 2] = (byte) (color >>> 16);
-                line.getScanline()[x * 4 + 3] = (byte) (color >>> 24);
+        if (def.palette != null) {
+            Map<Integer, Byte> paletteMap = new HashMap<>();
+            PngChunkPLTE chunk = new PngChunkPLTE(header);
+            chunk.setNentries(def.palette.length);
+            for (int i = 0; i < def.palette.length; i++) {
+                int c = def.palette[i];
+                chunk.setEntry(i, c >>> 16 & 0xff, c >>> 8 & 0xff, c & 0xff);
+                paletteMap.put(c, (byte) i);
             }
-            pngWriter.writeRow(line);
+            pngWriter.queueChunk(chunk);
+
+            for (int y = 0; y < frame.fullHeight; y++) {
+                ImageLineByte line = new ImageLineByte(header);
+                for (int x = 0; x < frame.fullWidth; x++) {
+                    int color = frame.color(x, y);
+                    line.getScanline()[x] = paletteMap.get(color);
+                }
+                pngWriter.writeRow(line);
+            }
+        } else {
+            for (int y = 0; y < frame.fullHeight; y++) {
+                //ImageLineByte line = new ImageLineByte(header);
+                ImageLineInt line = new ImageLineInt(header);
+                for (int x = 0; x < frame.fullWidth; x++) {
+                    int color = frame.color(x, y);
+                    line.getScanline()[x] = color;
+                }
+                pngWriter.writeRow(line);
+            }
         }
         pngWriter.end();
 

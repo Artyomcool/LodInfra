@@ -69,7 +69,7 @@ public class P32 extends Def {
         buffer.position(imageOffset);
         for (int j = height - 1; j >= 0; j--) {
             for (int i = 0; i < width; i++) {
-                buffer.putInt(frame.color(i, j));
+                buffer.putInt(ImgFilesUtils.pcxToD32Color(frame.color(i, j)));
             }
         }
 

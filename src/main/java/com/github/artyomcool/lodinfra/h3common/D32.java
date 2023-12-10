@@ -201,7 +201,7 @@ public class D32 extends DefInfo {
                     IntBuffer intBuffer = buffer.asIntBuffer();
                     for (int j = height - 1; j >= 0; j--) {
                         for (int i = 0; i < width; i++) {
-                            buffer.putInt(info.packedFrame.color(i, j));
+                            buffer.putInt(ImgFilesUtils.pcxToD32Color(info.packedFrame.color(i, j)));
                         }
                     }
 

@@ -10,7 +10,7 @@ import java.util.function.Function;
 public class DefView extends ImageView {
 
     private static final Image LOADING = new Text("Loading").snapshot(null, null);
-    private static final Image EMPTY = new Text("Empty").snapshot(null, null);
+    public static final Image EMPTY = new Text("Empty").snapshot(null, null);
 
     private DefInfo def;
     private Runnable onChanged = () -> {

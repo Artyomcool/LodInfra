@@ -1,5 +1,7 @@
 package com.github.artyomcool.lodinfra.h3common;
 
+import com.github.artyomcool.lodinfra.ui.Box;
+import com.github.artyomcool.lodinfra.ui.DefType;
 import com.github.artyomcool.lodinfra.ui.ImgFilesUtils;
 
 import java.nio.ByteBuffer;
@@ -121,6 +123,32 @@ public class DefInfo {
         def.palette = palette;
         def.path = path;
         return def;
+    }
+
+    public DefInfo withType(int type) {
+        DefInfo result = cloneBase();
+        result.groups.addAll(groups);
+        result.type = type;
+
+/*
+        DefDefault("Def-sprite: default", 0x40),
+                DefCombatCreature("Def-sprite: combat creature", 0x42),
+                DefAdventureObject("Def-sprite: adventure object", 0x43),
+                DefAdventureHero("Def-sprite: adventure hero", 0x44),
+                DefGroundTile("Def-sprite: ground tiles", 0x45),
+                DefMousePointer("Def-sprite: mouse pointer", 0x46),
+                DefInterface("Def-sprite: mouse pointer", 0x47),
+                DefCombatHero("Def-sprite: combat hero", 0x49),
+
+        int compression;
+        if (type == DefType.DefAdventureObject.type || type == DefType.DefAdventureHero.type) {
+            compression = 3;
+        } else if (type == DefType.DefGroundTile.type) {
+            compression = hasSpecialColors ? 2 : 0;
+        } else {
+            compression = 1;
+        }*/
+        return result;
     }
 
     public Frame first() {
@@ -297,12 +325,12 @@ public class DefInfo {
         buffer.put((byte) 0);
     }
 
-    protected static class PackedFrame {
+    public static class PackedFrame {
         final Frame frame;
-        final ImgFilesUtils.Box box;
+        final Box box;
         final int hashCode;
 
-        PackedFrame(Frame frame, ImgFilesUtils.Box box) {
+        public PackedFrame(Frame frame, Box box) {
             this.frame = frame;
             this.box = box;
             this.hashCode = calcHashCode();
@@ -314,7 +342,7 @@ public class DefInfo {
             result = 31 * result + frame.fullHeight;
             result = 31 * result + frame.compression;
             result = 31 * result + frame.frameDrawType;
-            result = 31 * result + frame.pixels.hashCode();
+            result = 31 * result + frame.pixelsSha.hashCode();
             return result;
         }
 
@@ -353,7 +381,7 @@ public class DefInfo {
             if (frame.compression != that.frame.compression) return false;
             if (frame.frameDrawType != that.frame.frameDrawType) return false;
             if (!Objects.equals(box, that.box)) return false;
-            return Objects.equals(frame.pixels, that.frame.pixels);
+            return Objects.equals(frame.pixelsSha, that.frame.pixelsSha);
         }
 
         @Override
@@ -362,13 +390,13 @@ public class DefInfo {
         }
     }
 
-    protected static class FrameInfo {
-        final PackedFrame packedFrame;
-        final List<Frame> frames = new ArrayList<>();
-        String name;
+    public static class FrameInfo {
+        public final PackedFrame packedFrame;
+        public final List<Frame> frames = new ArrayList<>();
+        public String name;
         int offset = -1;
 
-        FrameInfo(PackedFrame packedFrame) {
+        public FrameInfo(PackedFrame packedFrame) {
             this.packedFrame = packedFrame;
         }
     }
@@ -460,5 +488,29 @@ public class DefInfo {
             result.groups.add(group);
         }
         return result;
+    }
+
+    public static Box calculateTransparent(int w, int h, IntBuffer pixels) {
+        int left = Integer.MAX_VALUE;
+        int top = Integer.MAX_VALUE;
+        int right = Integer.MIN_VALUE;
+        int bottom = Integer.MIN_VALUE;
+
+        int transparent = SPEC_COLORS[0];
+
+        pixels = pixels.duplicate();
+        for (int y = 0; y < h; y++) {
+            for (int x = 0; x < w; x++) {
+                int color = pixels.get();
+                if (color != transparent) {
+                    left = Math.min(x, left);
+                    right = Math.max(x, right);
+                    top = Math.min(y, top);
+                    bottom = Math.max(y, bottom);
+                }
+            }
+        }
+
+        return new Box(left, top, right - left + 1, bottom - top + 1);
     }
 }

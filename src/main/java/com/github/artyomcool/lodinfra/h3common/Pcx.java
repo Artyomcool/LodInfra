@@ -114,7 +114,7 @@ public class Pcx extends DefInfo {
                     buffer.put(paletteIndex.get(frame.color(x, y)));
                 }
             }
-            return buffer;
+            return buffer.flip();
         } else {
             int size = frame.fullWidth * frame.fullHeight * 3;
             ByteBuffer buffer = ByteBuffer.allocate(12 + size)
@@ -137,7 +137,7 @@ public class Pcx extends DefInfo {
                             .put((byte) b);
                 }
             }
-            return buffer;
+            return buffer.flip();
         }
     }
 

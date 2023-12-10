@@ -1,9 +1,9 @@
 package com.github.artyomcool.lodinfra.ui;
 
 import com.github.artyomcool.lodinfra.Utils;
-import com.github.artyomcool.lodinfra.h3common.Def;
-import com.github.artyomcool.lodinfra.h3common.DefInfo;
+import com.github.artyomcool.lodinfra.h3common.*;
 import com.jfoenix.controls.*;
+import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.geometry.Insets;
@@ -44,6 +44,7 @@ import java.util.*;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public class DefEditor extends StackPane {
@@ -88,7 +89,7 @@ public class DefEditor extends StackPane {
             return cell;
         });
         view.setPrefHeight(100000);
-        view.setPrefWidth(150);
+        view.setPrefWidth(220);
         view.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
         return view;
     }
@@ -111,8 +112,6 @@ public class DefEditor extends StackPane {
     private final JFXCheckBox loop = new JFXCheckBox("Loop");
     private final JFXCheckBox lockGroup = new JFXCheckBox("Lock group");
 
-    private final Button addGroup = new Button("+Group");
-    private final Button insertFrames = new Button("+Frames");
     private final List<TreeItem<Object>> draggedItem = new ArrayList<>();
     private final ListView<HistoryItem> history = new JFXListView<>();
 
@@ -122,6 +121,7 @@ public class DefEditor extends StackPane {
                 setDefInternal(newValue.def, newValue.def.first());
             }
         });
+        history.setPadding(new Insets(0, 0, 0, 0));
         history.setOnMouseClicked(m -> {
             if (m.getClickCount() == 2) {
                 HistoryItem selectedItem = history.getSelectionModel().getSelectedItem();
@@ -129,9 +129,10 @@ public class DefEditor extends StackPane {
                     return;
                 }
                 if (m.isControlDown()) {
+                    int selectedIndex = history.getSelectionModel().getSelectedIndex();
                     DefInfo def = selectedItem.def;
                     setDefInternal(def, def.first());
-                    update("Restore", true);
+                    update("Restore (" + selectedIndex + ")", true);
                 } else {
                     DefInfo diffDef = DefInfo.makeDiff(
                             history.getItems().get(0).def,
@@ -164,12 +165,6 @@ public class DefEditor extends StackPane {
         });
     }
 
-    private final Button calculatePalette = new Button("Calculate");
-
-    {
-        calculatePalette.setOnAction(e -> calculatePalette());
-    }
-
     private TreeCell<Object> dropZone;
 
     {
@@ -178,14 +173,6 @@ public class DefEditor extends StackPane {
         path.setMaxWidth(200);
         fullWidth.setPrefWidth(30);
         fullHeight.setPrefWidth(30);
-
-        addGroup.setOnAction(e -> {
-            DefInfo.Group g = new DefInfo.Group(currentDef());
-            g.groupIndex = g.def.groups.isEmpty() ? 0 : (g.def.groups.get(g.def.groups.size() - 1).groupIndex + 1);
-            TreeItem<Object> item = new TreeItem<>(g);
-            groupsAndFrames.getRoot().getChildren().add(item);
-            update("New group", true);
-        });
     }
 
     private DefInfo currentDef() {
@@ -203,7 +190,11 @@ public class DefEditor extends StackPane {
         this.time = LocalTime.now().toSecondOfDay();
         VBox top = new VBox(
                 line(0, 0,
-                        width(150, line(new Label("Buttons"))),
+                        width(220, groupButtons(
+                                jfxbutton("Extract", this::extract),
+                                jfxbutton("Renew", this::renew),
+                                jfxbutton("Save", this::save)
+                        )),
                         new Separator(Orientation.VERTICAL),
                         line(new Label("Backgrounds"))
                 ),
@@ -219,9 +210,25 @@ public class DefEditor extends StackPane {
                     }
                 }
         );
-        HBox left = line(0, 0, new VBox(grow(groupsAndFrames), groupButtons(addGroup, insertFrames)), new Separator(Orientation.VERTICAL));
+        HBox left = line(0, 0,
+                new VBox(
+                        grow(groupsAndFrames),
+                        groupButtons(
+                                button("+Group", this::addGroup),
+                                button("+Frames", this::insertFrames)
+                        )
+                ),
+                new Separator(Orientation.VERTICAL)
+        );
         VBox center = new VBox(
-                grow(new ScrollPane(border(Color.GRAY, preview))),
+                grow(new ScrollPane(border(Color.GRAY, preview)) {
+                    {
+                        preview.layoutBoundsProperty().addListener((observable, oldValue, newValue) -> Platform.runLater(() -> {
+                            setHvalue(0.5);
+                            setVvalue(0.5);
+                        }));
+                    }
+                }),
                 new Separator(),
                 pad(2, growH(control)),
                 new Separator(),
@@ -234,11 +241,14 @@ public class DefEditor extends StackPane {
                 growH(new VBox(8,
                         border(Color.LIGHTGRAY,
                                 new VBox(4,
-                                        height(150, width(150, new StackPane(palette))),
-                                        groupButtons(calculatePalette)
+                                        height(220, width(220, new StackPane(palette))),
+                                        groupButtons(
+                                                button("Calculate", this::calculatePalette),
+                                                button("Drop", this::dropPalette)
+                                        )
                                 )
                         ),
-                        grow(border(Color.LIGHTGRAY, width(150, history)))
+                        grow(border(Color.LIGHTGRAY, width(220, history)))
                 ))
         );
         BorderPane root = new BorderPane(center, top, right, null, left);
@@ -280,38 +290,6 @@ public class DefEditor extends StackPane {
             }
         });
         groupsAndFrames.setContextMenu(new ContextMenu(delete));
-
-        insertFrames.setOnAction(e -> {
-            TreeItem<Object> item = groupsAndFrames.getSelectionModel().getSelectedItem();
-            if (item == null) {
-                return;
-            }
-            DefInfo.Group parent;
-            TreeItem<Object> parentItem;
-            int index = 0;
-            if (item.getValue() instanceof DefInfo.Group) {
-                parent = (DefInfo.Group) item.getValue();
-                parentItem = item;
-            } else {
-                parent = ((DefInfo.Frame) item.getValue()).group;
-                parentItem = item.getParent();
-                index = parentItem.getChildren().indexOf(item) + 1;
-            }
-            FileChooser fileChooser = new FileChooser();
-            fileChooser.setTitle("Open Resource File");
-            List<File> files = fileChooser.showOpenMultipleDialog(getScene().getWindow());
-            List<TreeItem<Object>> items = new ArrayList<>();
-            for (File file : files) {
-                DefInfo def = DefInfo.load(file.toPath());
-                for (DefInfo.Group group : def.groups) {
-                    for (DefInfo.Frame frame : group.frames) {
-                        items.add(new TreeItem<>(frame.cloneBase(parent)));
-                    }
-                }
-            }
-            parentItem.getChildren().addAll(index, items);
-            update("New frames", true);
-        });
     }
 
     public void setDef(DefInfo original, DefInfo.Frame frame) {
@@ -341,9 +319,7 @@ public class DefEditor extends StackPane {
         fullHeight.setText(def.fullHeight + "");
         defType.setValue(DefType.of(def.type));
 
-        if (def.palette != null) {
-            drawPalette(def);
-        }
+        drawPalette(def);
 
         TreeItem<Object> root = new TreeItem<>();
         groupsAndFrames.setRoot(root);
@@ -373,7 +349,11 @@ public class DefEditor extends StackPane {
     }
 
     private void drawPalette(DefInfo def) {
-        int cw = 8;
+        if (def.palette == null) {
+            palette.setImage(DefView.EMPTY);
+            return;
+        }
+        int cw = 13;
         WritableImage img = new WritableImage(16 * cw, 16 * cw);
         for (int y = 0; y < 16; y++) {
             for (int x = 0; x < 16; x++) {
@@ -389,7 +369,7 @@ public class DefEditor extends StackPane {
     }
 
     private void putHistory(DefInfo def, String action) {
-        history.getItems().add(0, new HistoryItem(def, action));
+        history.getItems().add(0, new HistoryItem(def, history.getItems().size() + ". " + action));
         history.getSelectionModel().select(0);
         saveHistory(new ArrayList<>(history.getItems()));
     }
@@ -448,8 +428,10 @@ public class DefEditor extends StackPane {
                         buffer.putInt(item.def.fullWidth);
                         buffer.putInt(item.def.fullHeight);
                         buffer.putInt(item.def.palette == null ? 0 : 256);
-                        for (int color : item.def.palette) {
-                            buffer.putInt(color);
+                        if (item.def.palette != null) {
+                            for (int color : item.def.palette) {
+                                buffer.putInt(color);
+                            }
                         }
                         buffer.putInt(item.def.groups.size());
                         for (DefInfo.Group group : item.def.groups) {
@@ -597,7 +579,11 @@ public class DefEditor extends StackPane {
             return;
         }
         int[] palette = toPalette(colors, battleColors);
-        update("Palette", false, palette, Function.identity());
+        update("Palette", palette, Function.identity());
+    }
+
+    private void dropPalette() {
+        update("Drop palette", null, Function.identity());
     }
 
     private static int[] toPalette(Set<Integer> colors, boolean battleColors) {
@@ -776,13 +762,17 @@ public class DefEditor extends StackPane {
     }
 
     private void update(String action, boolean restoreSelection) {
-        update(action, restoreSelection, currentDef().palette, Function.identity());
+        update(action, currentDef().palette, Function.identity());
     }
 
-    private void update(String action, boolean restoreSelection, int[] palette, Function<IntBuffer, IntBuffer> frameProcessor) {
-        DefInfo.Frame currentFrame = restoreSelection
-                ? (groupsAndFrames.getSelectionModel().getSelectedItem() != null ? (DefInfo.Frame) groupsAndFrames.getSelectionModel().getSelectedItem().getValue() : null)
-                : null;
+    private void update(String action, int[] palette, Function<IntBuffer, IntBuffer> frameProcessor) {
+        DefInfo.Frame currentFrame = null;
+        if (groupsAndFrames.getSelectionModel().getSelectedItem() != null) {
+            Object value = groupsAndFrames.getSelectionModel().getSelectedItem().getValue();
+            if (value instanceof DefInfo.Frame) {
+                currentFrame = (DefInfo.Frame) value;
+            }
+        }
         DefInfo def = currentDef().cloneBase();
         def.palette = palette;
         for (TreeItem<Object> treeGroup : groupsAndFrames.getRoot().getChildren()) {
@@ -791,7 +781,7 @@ public class DefEditor extends StackPane {
             for (TreeItem<Object> treeFrame : treeGroup.getChildren()) {
                 DefInfo.Frame prevFrame = (DefInfo.Frame) treeFrame.getValue();
                 DefInfo.Frame frame = prevFrame.cloneBase(group, frameProcessor.apply(prevFrame.pixels.duplicate()));
-                if (restoreSelection && currentFrame == prevFrame) {
+                if (currentFrame == prevFrame) {
                     currentFrame = frame;
                 }
                 treeFrame.setValue(frame);
@@ -800,17 +790,13 @@ public class DefEditor extends StackPane {
         }
         react = false;
         setDefToPreview(def);
-        if (restoreSelection) {
-            preview.setFrame(currentFrame);
+        if (currentFrame == null) {
+            currentFrame = def.first();
         }
-        if (def.palette != null) {
-            drawPalette(def);
-        }
+        preview.setFrame(currentFrame);
+        drawPalette(def);
         putHistory(def, action);
         react = true;
-        if (!restoreSelection) {
-            preview.setCurrentIndex(0);
-        }
     }
 
     private void clearDropLocation() {
@@ -865,7 +851,6 @@ public class DefEditor extends StackPane {
 
     private void replaceColor(int from, int to) {
         update(Integer.toHexString(from).toUpperCase() + "->" + Integer.toHexString(to).toUpperCase(),
-                true,
                 currentDef().palette,
                 pixels -> {
                     IntBuffer result = IntBuffer.allocate(pixels.remaining());
@@ -881,7 +866,218 @@ public class DefEditor extends StackPane {
         );
     }
 
-    private static Node groupButtons(Control... nodes) {
+    private void extract() {
+        // TODO enforce no palette or valid palette
+        DefInfo current = history.getItems().get(0).def;
+        Path extracted = currentRestore.resolve(time + "_Extracted");
+        try {
+            Files.createDirectories(extracted);
+            for (DefInfo.Group group : current.groups) {
+                for (DefInfo.Frame frame : group.frames) {
+                    ByteBuffer pack = Png.pack(frame);
+                    String name = frame.name;
+                    byte[] data = new byte[pack.remaining()];
+                    pack.get(data);
+                    Files.write(extracted.resolve(name + ".png"), data);
+                }
+            }
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private void renew() {
+        DefInfo def = history.getItems().get(0).def;
+        DefInfo current = def.cloneBase();
+        Path extracted = currentRestore.resolve(time + "_Extracted");
+        try {
+            for (DefInfo.Group group : def.groups) {
+                DefInfo.Group base = group.cloneBase(current);
+                for (DefInfo.Frame frame : group.frames) {
+                    String name = frame.name;
+                    Path file = extracted.resolve(name + ".png");
+                    if (Files.exists(file)) {
+                        DefInfo info = Png.load(ByteBuffer.wrap(Files.readAllBytes(file)));
+                        frame.cloneBase(base, info.first().pixels);
+                    }
+                }
+            }
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+        setDefInternal(current, current.first());
+        drawPalette(current);
+        autoscroll();
+        react = false;
+        putHistory(current, "Reloaded frames");
+        react = true;
+    }
+
+    private void addGroup() {
+        DefInfo.Group g = new DefInfo.Group(currentDef());
+        g.groupIndex = g.def.groups.isEmpty() ? 0 : (g.def.groups.get(g.def.groups.size() - 1).groupIndex + 1);
+        TreeItem<Object> item = new TreeItem<>(g);
+        groupsAndFrames.getRoot().getChildren().add(item);
+        update("New group", true);
+    }
+
+    private void insertFrames() {
+        TreeItem<Object> item = groupsAndFrames.getSelectionModel().getSelectedItem();
+        if (item == null) {
+            return;
+        }
+        DefInfo.Group parent;
+        TreeItem<Object> parentItem;
+        int index = 0;
+        if (item.getValue() instanceof DefInfo.Group) {
+            parent = (DefInfo.Group) item.getValue();
+            parentItem = item;
+        } else {
+            parent = ((DefInfo.Frame) item.getValue()).group;
+            parentItem = item.getParent();
+            index = parentItem.getChildren().indexOf(item) + 1;
+        }
+        FileChooser fileChooser = new FileChooser();
+        fileChooser.setTitle("Open Resource File");
+        List<File> files = fileChooser.showOpenMultipleDialog(getScene().getWindow());
+        List<TreeItem<Object>> items = new ArrayList<>();
+        for (File file : files) {
+            DefInfo def = DefInfo.load(file.toPath());
+            for (DefInfo.Group group : def.groups) {
+                for (DefInfo.Frame frame : group.frames) {
+                    items.add(new TreeItem<>(frame.cloneBase(parent)));
+                }
+            }
+        }
+        parentItem.getChildren().addAll(index, items);
+        update("New frames", true);
+    }
+
+    private void save() {
+        DefType type = defType.getSelectionModel().getSelectedItem();
+        DefInfo def = history.getItems().get(0).def.withType(type.type);
+
+        ByteBuffer packed = switch (type) {
+            case DefDefault,
+                    DefCombatCreature,
+                    DefAdventureObject,
+                    DefAdventureHero,
+                    DefGroundTile,
+                    DefMousePointer,
+                    DefInterface,
+                    DefCombatHero -> Def.pack(ensureWithPalette(def), getLinks(def));
+            case D32 -> D32.pack(ensureNoPalette(def), getLinks(def));
+            case P32 -> P32.pack(ensureOnlyFrame(ensureNoPalette(def)));
+            case Pcx8 -> Pcx.pack(ensureOnlyFrame(ensureWithPalette(def)));
+            case Pcx24 -> Pcx.pack(ensureNoAlpha(ensureOnlyFrame(ensureNoPalette(def))));
+            case Unknown -> throw new UnsupportedOperationException("Unknown type");
+        };
+
+        DefInfo load = DefInfo.load(packed);
+        load.path = def.path;
+        setDef(load, load.first());
+    }
+
+    private static DefInfo.Frame ensureNoAlpha(DefInfo.Frame frame) {
+        IntBuffer pixels = frame.pixels.duplicate();
+        while (pixels.hasRemaining()) {
+            int color = pixels.get();
+            if (color >>> 24 != 0xff) {
+                throw showError("There are pixels with alpha: 0x" + Integer.toHexString(color));
+            }
+        }
+        return frame;
+    }
+
+    private static DefInfo.Frame ensureOnlyFrame(DefInfo def) {
+        DefInfo.Frame frame = null;
+        for (DefInfo.Group group : def.groups) {
+            for (DefInfo.Frame f : group.frames) {
+                if (frame == null) {
+                    frame = f;
+                } else {
+                    throw showError("There should be only one frame");
+                }
+            }
+        }
+        throw showError("There should be exactly one frame");
+    }
+
+    private static DefInfo ensureNoPalette(DefInfo def) {
+        if (def.palette != null) {
+            throw showError("There should be no palette");
+        }
+        return def;
+    }
+
+    private static DefInfo ensureWithPalette(DefInfo def) {
+        if (def.palette == null) {
+            throw showError("There should be a palette");
+        }
+        Set<String> hashes = new HashSet<>();
+        Set<Integer> palette = Arrays.stream(def.palette).boxed().collect(Collectors.toSet());
+        for (DefInfo.Group group : def.groups) {
+            for (DefInfo.Frame frame : group.frames) {
+                if (hashes.add(frame.pixelsSha)) {
+                    IntBuffer pixels = frame.pixels.duplicate();
+                    while (pixels.hasRemaining()) {
+                        int color = pixels.get();
+                        if (!palette.contains(color)) {
+                            throw showError("Palette doesn't contain color 0x" + Integer.toHexString(color));
+                        }
+                    }
+                }
+            }
+        }
+        return def;
+    }
+
+    private static RuntimeException showError(String error) {
+        Alert alert = new Alert(Alert.AlertType.ERROR);
+        alert.setTitle("Error");
+        alert.setContentText(error);
+        alert.showAndWait();
+        return new RuntimeException(error);
+    }
+
+    private static Map<DefInfo.Frame, DefInfo.FrameInfo> getLinks(DefInfo def) {
+        Map<String, Box> shaToBox = new HashMap<>();
+        Map<DefInfo.PackedFrame, DefInfo.FrameInfo> frameInfoMap = new LinkedHashMap<>();
+        for (DefInfo.Group group : def.groups) {
+            for (DefInfo.Frame frame : group.frames) {
+                Box box = shaToBox.computeIfAbsent(
+                        frame.pixelsSha,
+                        s -> DefInfo.calculateTransparent(frame.fullWidth, frame.fullHeight, frame.pixels)
+                );
+                DefInfo.FrameInfo info = frameInfoMap.computeIfAbsent(
+                        new DefInfo.PackedFrame(frame, box),
+                        DefInfo.FrameInfo::new
+                );
+                info.frames.add(frame);
+            }
+        }
+
+        int sharedFramesCount = 0;
+        Map<DefInfo.Frame, DefInfo.FrameInfo> result = new HashMap<>();
+        for (DefInfo.FrameInfo value : frameInfoMap.values()) {
+            String defName = def.path.getFileName().toString();
+            String prefix = defName.substring(0, Math.min(8, defName.length()));
+            if (value.frames.size() > 1) {
+                value.name = String.format("%s_%03d", prefix, sharedFramesCount++);
+            } else {
+                DefInfo.Frame frame = value.frames.get(0);
+                char group = (char) ('A' + frame.group.groupIndex);
+                value.name = String.format("%s%s%03d", prefix, group + "", frame.group.frames.indexOf(frame));
+            }
+            for (DefInfo.Frame frame : value.frames) {
+                result.put(frame, value);
+            }
+        }
+
+        return result;
+    }
+
+    private static Pane groupButtons(Control... nodes) {
         HBox result = new HBox(2, nodes) {
             @Override
             protected void layoutChildren() {
@@ -893,6 +1089,19 @@ public class DefEditor extends StackPane {
         };
         result.setPadding(new Insets(2, 0, 2, 0));
         return result;
+    }
+
+    private static <T extends ButtonBase> T withAction(T button, Runnable action) {
+        button.setOnAction(a -> action.run());
+        return button;
+    }
+
+    private static Button button(String name, Runnable action) {
+        return withAction(new Button(name), action);
+    }
+
+    private static JFXButton jfxbutton(String name, Runnable action) {
+        return withAction(new JFXButton(name), action);
     }
 
     private static <T extends Region> T pad(int padding, T node) {

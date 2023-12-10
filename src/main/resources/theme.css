@@ -95,6 +95,7 @@
 
 .tree-cell, .jfx-list-cell, .list-cell {
     -fx-font-family: monospace;
+    -fx-padding: 1;
  }
 
 .tree-table-row-cell:even, .tree-cell:even {

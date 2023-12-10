@@ -149,8 +149,8 @@ public class DefCompareView extends VBox {
         scene.getStylesheets().add(getClass().getResource("/theme.css").toExternalForm());
         stage.setScene(scene);
         stage.setTitle("View & Edit");
-        stage.setWidth(800);
-        stage.setHeight(600);
+        stage.setWidth(1024);
+        stage.setHeight(800);
         stage.initModality(Modality.WINDOW_MODAL);
         stage.initOwner(getScene().getWindow());
         root.start();
