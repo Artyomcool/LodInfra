@@ -57,13 +57,13 @@ public class ImgFilesUtils {
     public static <T> T processFile(Path file, T def, ImgFilesUtils.Processor<T> processor) {
         try {
             String s = file.getFileName().toString();
-            if (s.contains("?")) {
-                Path p = file.resolveSibling(s.substring(0, s.indexOf("?")));
+            if (s.contains("=@=@=")) {
+                Path p = file.resolveSibling(s.substring(0, s.indexOf("=@=@=")));
                 try (FileChannel channel = FileChannel.open(p)) {
                     MappedByteBuffer buffer = channel.map(FileChannel.MapMode.READ_ONLY, 0, channel.size());
                     buffer.order(ByteOrder.LITTLE_ENDIAN);
                     LodFile lod = LodFile.parse(file, buffer);
-                    String name = s.substring(s.indexOf("?") + 1);
+                    String name = s.substring(s.indexOf("=@=@=") + "=@=@=".length());
                     for (LodFile.SubFileMeta subFile : lod.subFiles) {
                         if (name.equals(subFile.nameAsString)) {
                             return processor.process(subFile.asByteBuffer());

@@ -174,9 +174,6 @@ public class DefCompareView extends VBox {
         if (file == null) {
             return null;
         }
-        if (!Files.exists(file)) {
-            return null;
-        }
 
         String fileName = file.getFileName().toString().toLowerCase();
         for (String ext : Arrays.asList("png", "bmp", "def", "p32", "d32", "pcx")) {

@@ -859,7 +859,7 @@ public class DiffUi extends Application {
                             LodFile lod = LodFile.load(item.local.path);
                             for (LodFile.SubFileMeta subFile : lod.subFiles) {
                                 if (subFile.nameAsString.toLowerCase().endsWith(".def")) {
-                                    Path path = item.local.path.resolveSibling(item.local.path.getFileName() + "?" + subFile.nameAsString);
+                                    Path path = item.local.path.resolveSibling(item.local.path.getFileName() + "=@=@=" + subFile.nameAsString);
                                     //ImgFilesUtils.validateDefSpecColors(path);
                                 }
                             }
@@ -1346,17 +1346,17 @@ public class DiffUi extends Application {
 
 
                 FileInfo localFile = new FileInfo(
-                        item.local.path.resolveSibling(item.local.path.getFileName() + "?" + localName),
+                        item.local.path.resolveSibling(item.local.path.getFileName() + "=@=@=" + localName),
                         localName,
-                        null,
+                        item.local.lastModified,
                         localMeta == null ? null : (long) localMeta.uncompressedSize,
                         false,
                         localMeta != null
                 );
                 FileInfo remoteFile = new FileInfo(
-                        item.remote.path.resolveSibling(item.remote.path.getFileName() + "?" + remoteName),
+                        item.remote.path.resolveSibling(item.remote.path.getFileName() + "=@=@=" + remoteName),
                         remoteName,
-                        null,
+                        item.remote.lastModified,
                         remoteMeta == null ? null : (long) remoteMeta.uncompressedSize,
                         false,
                         remoteMeta != null
