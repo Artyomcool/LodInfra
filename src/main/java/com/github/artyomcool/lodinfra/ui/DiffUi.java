@@ -70,11 +70,13 @@ public class DiffUi extends Application {
     });
 
     private Consumer<TreeItem<Item>> onFilesChangedAction = t -> {};
+    private Consumer<String> onFilterChanged = s -> {};
 
     private Stage primaryStage;
     private DefCompareView preview;
     private TreeItem<Item> rootItem;
     private WatchService watchService;
+    private TextField search;
 
     public DiffUi(Path localPath, Path remotePath, Path cfg, Path logs, String nick) {
         this.localPath = localPath.toAbsolutePath();
@@ -322,7 +324,10 @@ public class DiffUi extends Application {
         panelWrapper.setAlignment(Pos.CENTER);
 
         StackPane listWrapper = new StackPane();
-        VBox listParent = new VBox(panelWrapper, listWrapper);
+        search = new TextField();
+        search.setPromptText("Search...");
+        search.textProperty().addListener((observable, oldValue, newValue) -> onFilterChanged.accept(newValue));
+        VBox listParent = new VBox(panelWrapper, search, listWrapper);
         listParent.setFillWidth(true);
         VBox.setMargin(panelWrapper, padding);
         VBox.setVgrow(listWrapper, Priority.ALWAYS);
@@ -372,6 +377,7 @@ public class DiffUi extends Application {
             }
 
             private void updateRoot() {
+                onFilterChanged = s -> updateRoot();
                 cachedGlobalRoot = rootItem;
                 itemTreeItem = DiffUi.this.filterForFetch();
                 fetchList.setRoot(itemTreeItem);
@@ -536,6 +542,7 @@ public class DiffUi extends Application {
             }
 
             private void updateRoot() {
+                onFilterChanged = s -> updateRoot();
                 cachedGlobalRoot = rootItem;
                 itemTreeItem = DiffUi.this.filterForPush();
                 pushList.setRoot(itemTreeItem);
@@ -583,6 +590,7 @@ public class DiffUi extends Application {
             }
 
             private void updateRoot() {
+                onFilterChanged = s -> updateRoot();
                 cachedGlobalRoot = rootItem;
                 itemTreeItem = DiffUi.this.filterForObserve();
                 observeList.setRoot(itemTreeItem);
@@ -1375,11 +1383,16 @@ public class DiffUi extends Application {
         Predicate<TreeItem<Item>> preFilter = item -> true;
         Function<TreeItem<Item>, TreeItem<Item>> fold = item -> {
             if (item.getChildren().size() == 1) {
-                item.setValue(item.getChildren().remove(0).getValue().foldInto(item.getValue()));
+                TreeItem<Item> treeItem = item.getChildren().remove(0);
+                treeItem.setValue(treeItem.getValue().foldInto(item.getValue()));
+                return treeItem;
             } else if (item.getChildren().isEmpty()) {
                 if (!item.getValue().local.isFile && !item.getValue().remote.isFile) {
                     return null;
                 }
+            }
+            if (!search.getText().isEmpty()) {
+                item.setExpanded(true);
             }
             return item;
         };
@@ -1460,6 +1473,9 @@ public class DiffUi extends Application {
             Function<TreeItem<Item>, TreeItem<Item>> fold
     ) {
         if (!preFilter.test(item)) {
+            return null;
+        }
+        if ((item.getValue().local.isFile || item.getValue().remote.isFile) && !item.getValue().local.name.toLowerCase().contains(search.getText().toLowerCase())) {
             return null;
         }
         ObservableList<TreeItem<Item>> children = item.getChildren();
