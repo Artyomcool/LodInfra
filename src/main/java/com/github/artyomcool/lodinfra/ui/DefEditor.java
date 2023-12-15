@@ -1,5 +1,6 @@
 package com.github.artyomcool.lodinfra.ui;
 
+import com.github.artyomcool.lodinfra.Pack;
 import com.github.artyomcool.lodinfra.Utils;
 import com.github.artyomcool.lodinfra.h3common.*;
 import com.jfoenix.controls.*;
@@ -31,6 +32,7 @@ import javafx.stage.FileChooser;
 import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.nio.IntBuffer;
 import java.nio.channels.SeekableByteChannel;
 import java.nio.charset.StandardCharsets;
@@ -881,6 +883,8 @@ public class DefEditor extends StackPane {
                     Files.write(extracted.resolve(name + ".png"), data);
                 }
             }
+
+            Pack.APP.getHostServices().showDocument(extracted.toAbsolutePath().toString());
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -895,16 +899,38 @@ public class DefEditor extends StackPane {
                 DefInfo.Group base = group.cloneBase(current);
                 for (DefInfo.Frame frame : group.frames) {
                     String name = frame.name;
-                    Path file = extracted.resolve(name + ".png");
-                    if (Files.exists(file)) {
-                        DefInfo info = Png.load(ByteBuffer.wrap(Files.readAllBytes(file)));
+                    Path png = extracted.resolve(name + ".png");
+                    Path bmp = extracted.resolve(name + ".bmp");
+                    if (Files.exists(png)) {
+                        DefInfo info = Png.load(ByteBuffer.wrap(Files.readAllBytes(png)));
                         frame.cloneBase(base, info.first().pixels);
+                    } else if (Files.exists(bmp)) {
+                        DefInfo info = Bmp.load(ByteBuffer.wrap(Files.readAllBytes(bmp)).order(ByteOrder.LITTLE_ENDIAN));
+                        frame.cloneBase(base, info.fullWidth, info.fullHeight, info.first().pixels);
                     }
                 }
             }
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
+        int w = -1;
+        int h = -1;
+        for (DefInfo.Group group : current.groups) {
+            for (DefInfo.Frame frame : group.frames) {
+                if (w == -1) {
+                    w = frame.fullWidth;
+                } else if (w != frame.fullWidth) {
+                    throw showError("Width inconsistent: " + frame.name + " has width " + w);
+                }
+                if (h == -1) {
+                    h = frame.fullHeight;
+                } else if (w != frame.fullHeight) {
+                    throw showError("Height inconsistent: " + frame.fullHeight + " has height " + h);
+                }
+            }
+        }
+        current.fullWidth = w;
+        current.fullHeight = h;
         setDefInternal(current, current.first());
         drawPalette(current);
         autoscroll();
@@ -976,6 +1002,12 @@ public class DefEditor extends StackPane {
         DefInfo load = DefInfo.load(packed);
         load.path = def.path;
         setDef(load, load.first());
+
+        try {
+            Files.write(def.path, packed.array(), StandardOpenOption.WRITE, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     private static DefInfo.Frame ensureNoAlpha(DefInfo.Frame frame) {

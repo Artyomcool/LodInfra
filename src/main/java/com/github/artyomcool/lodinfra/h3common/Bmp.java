@@ -13,7 +13,7 @@ public class Bmp extends DefInfo {
     public static DefInfo load(ByteBuffer data) {
         int magic = data.getShort() & 0xffff;
         if (magic != 0x4D42) {  // BM
-            throw new IllegalArgumentException("Invalid signature");
+            throw new IllegalArgumentException("Invalid signature " + Integer.toHexString(magic));
         }
         int fileSize = data.getInt();
         data.getInt();  // reserved

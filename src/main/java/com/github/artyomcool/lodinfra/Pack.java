@@ -21,6 +21,7 @@ import java.util.zip.DataFormatException;
 public class Pack {
 
     private static final String VERSION = "1.5";
+    public static Application APP = null;
 
     public static void main(String[] a) throws IOException {
         /*if (true) {
@@ -93,6 +94,7 @@ public class Pack {
     }
 
     private static void run(Application gui) throws InterruptedException {
+        APP = gui;
         System.setProperty("prism.lcdtext", "false");
         System.setProperty("prism.subpixeltext", "false");
         CountDownLatch platform = new CountDownLatch(1);

@@ -11,6 +11,9 @@ import javafx.scene.Group;
 import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.control.Label;
+import javafx.scene.image.Image;
+import javafx.scene.image.PixelFormat;
+import javafx.scene.image.WritableImage;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
@@ -18,13 +21,13 @@ import javafx.scene.shape.SVGPath;
 import javafx.stage.Modality;
 import javafx.stage.Stage;
 
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.function.Function;
 
 public class DefCompareView extends VBox {
     private static final Executor LOADER = Executors.newSingleThreadExecutor(r -> {
@@ -97,6 +100,7 @@ public class DefCompareView extends VBox {
     public void setImages(Path local, Path remote) {
         previousLoad.cancel(false);
         this.local.loading();
+        //this.local.setTransformation(Function.identity());
         this.remote.loading();
         this.diff.loading();
 
@@ -117,6 +121,34 @@ public class DefCompareView extends VBox {
                     this.local.setDef(localDef);
                     this.remote.setDef(remoteDef);
                     this.diff.setDef(diffDef);
+
+                    /*if (localDef != null && localDef.mask != null) {
+                        this.local.setTransformation(img -> {
+                            int width = (int) img.getWidth();
+                            int height = (int) img.getHeight();
+                            WritableImage res = new WritableImage(width, height);
+                            int[] line = new int[width];
+                            for (int y = 0; y < height; y++) {
+                                img.getPixelReader().getPixels(0, y, width, 1, PixelFormat.getIntArgbInstance(), line, 0, width);
+                                for (int x = 0; x < line.length; x++) {
+                                    boolean dirty = localDef.mask.isDirty(x / 32, y / 32);
+                                    boolean shadow = localDef.mask.isShadow(x / 32, y / 32);
+                                    if (dirty || shadow) {
+                                        int c = line[x];
+                                        int r = c >>> 16 & 0xff;
+                                        int g = c >>> 8 & 0xff;
+                                        int b = c & 0xff;
+                                        r = dirty ? (r + 0xff) / 2 : r / 2;
+                                        g = g / 2;
+                                        b = shadow ? (b + 0xff) / 2 : b / 2;
+                                        line[x] = (c & 0xff000000) | r << 16 | g << 8 | b;
+                                    }
+                                }
+                                res.getPixelWriter().setPixels(0, y, width, 1, PixelFormat.getIntArgbInstance(), line, 0, width);
+                            }
+                            return res;
+                        });
+                    }*/
 
                     localControl.refreshImage();
                     remoteControl.refreshImage();

@@ -1,7 +1,6 @@
 package com.github.artyomcool.lodinfra.h3common;
 
 import com.github.artyomcool.lodinfra.ui.Box;
-import com.github.artyomcool.lodinfra.ui.DefType;
 import com.github.artyomcool.lodinfra.ui.ImgFilesUtils;
 
 import java.nio.ByteBuffer;
@@ -112,6 +111,7 @@ public class DefInfo {
     public int fullHeight;
     public int[] palette;
     public Path path;
+    public Msk mask;
 
     public final List<Group> groups = new ArrayList<>();
 
@@ -241,6 +241,10 @@ public class DefInfo {
         }
 
         public Frame cloneBase(Group group, IntBuffer pixels) {
+            return cloneBase(group, fullWidth, fullHeight, pixels);
+        }
+
+        public Frame cloneBase(Group group, int fullWidth, int fullHeight, IntBuffer pixels) {
             Frame frame = new Frame(group, fullWidth, fullHeight, pixels);
             frame.name = name;
             frame.compression = compression;
@@ -268,14 +272,20 @@ public class DefInfo {
     }
 
     public static DefInfo load(Path path) {
-        return ImgFilesUtils.processFile(path, null, buffer -> {
+        DefInfo result = ImgFilesUtils.processFile(path, null, buffer -> {
             DefInfo def = DefInfo.load(buffer.duplicate().order(ByteOrder.LITTLE_ENDIAN));
             if (def != null) {
                 def.path = path;
             }
             return def;
-
         });
+        if (result == null) {
+            return null;
+        }
+        String filename = path.getFileName().toString();
+        Path msk = path.resolveSibling(filename.substring(0, filename.lastIndexOf('.') + 1) + "msk");
+        result.mask = ImgFilesUtils.processFile(msk, null, Msk::new);
+        return result;
     }
 
     public static DefInfo load(ByteBuffer buffer) {

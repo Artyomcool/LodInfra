@@ -1564,6 +1564,51 @@ public class DiffUi extends Application {
         if (treeItem == null) {
             return;
         }
+        if (treeItem.getValue().local.path.toString().endsWith(".msk")) {
+            try {
+                byte[] bytes = Files.readAllBytes(treeItem.getValue().local.path);
+                int w = bytes[0] & 0xff;
+                int h = bytes[1] & 0xff;
+
+                int drawBottomLine0 = bytes[7];
+                int drawBottomLine1 = bytes[6];
+                int drawBottomLine2 = bytes[5];
+                int drawBottomLine3 = bytes[4];
+                int drawBottomLine4 = bytes[3];
+                int drawBottomLine5 = bytes[2];
+
+                int drawRight0Line0 = drawBottomLine0 >>> 7 & 1;
+                int drawRight1Line0 = drawBottomLine0 >>> 6 & 1;
+                int drawRight2Line0 = drawBottomLine0 >>> 5 & 1;
+                int drawRight3Line0 = drawBottomLine0 >>> 4 & 1;
+                int drawRight4Line0 = drawBottomLine0 >>> 3 & 1;
+                int drawRight5Line0 = drawBottomLine0 >>> 2 & 1;
+                int drawRight6Line0 = drawBottomLine0 >>> 1 & 1;
+                int drawRight7Line0 = drawBottomLine0 >>> 0 & 1;
+
+                System.out.println(w + "x" + h);
+                System.out.println("----PIXELS----");
+                for (int y = 8 - h; y < 8; y++) {
+                    int line = bytes[y];
+                    for (int x = 8 - w; x < 8; x++) {
+                        System.out.print((line >>> x & 1) == 1 ? "x" : "o");
+                    }
+                    System.out.println();
+                }
+                System.out.println("----SHADOW----");
+                for (int y = 14 - h; y < 14; y++) {
+                    int line = bytes[y];
+                    for (int x = 8 - w; x < 8; x++) {
+                        System.out.print((line >>> x & 1) == 1 ? "x" : "o");
+                    }
+                    System.out.println();
+                }
+                System.out.println("--------------");
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+            return;
+        }
         preview.setImages(treeItem.getValue().local.path, treeItem.getValue().remote.path);
 
         DefCompareView[] node = new DefCompareView[1];
