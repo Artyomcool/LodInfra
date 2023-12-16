@@ -26,6 +26,7 @@ public class Pcx extends DefInfo {
 
     public static DefInfo load24(ByteBuffer buffer, int width, int height) {
         IntBuffer pixels = IntBuffer.allocate(width * height);
+        buffer.position(buffer.position() + 12);
         for (int y = 0; y < height; y++) {
             for (int x = 0; x < width; x++) {
                 int b = buffer.get() & 0xff;
@@ -50,6 +51,7 @@ public class Pcx extends DefInfo {
 
     public static DefInfo load8(ByteBuffer buffer, int width, int height) {
         IntBuffer pixels = IntBuffer.allocate(width * height);
+        buffer.position(buffer.position() + 12);
         for (int y = 0; y < height; y++) {
             for (int x = 0; x < width; x++) {
                 pixels.put(buffer.get() & 0xff);

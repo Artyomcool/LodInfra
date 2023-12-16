@@ -149,9 +149,7 @@ public class Def extends DefInfo {
 
                         int xx = x;
                         int pos = x + y * fullWidth;
-                        int a = 0;
                         for (int i1 : offsets1) {
-                            System.out.print(a++);
                             buf.position(i1);
 
                             int left = 32;
@@ -159,16 +157,9 @@ public class Def extends DefInfo {
                                 int b = buf.get() & 0xff;
                                 int index = b >> 5;
                                 int count = (b & 0x1f) + 1;
-                                System.out.print(", (" + index + " " + count + ")");
 
                                 for (int j1 = 0; j1 < count; j1++) {
-                                    if (index == 0x7) {
-                                        int ci = buf.get() & 0xff;
-                                        System.out.print("x" + Integer.toHexString(ci).toUpperCase());
-                                        pixelsArray[pos++] = palette[ci];
-                                    } else {
-                                        pixelsArray[pos++] = SPEC_COLORS[index];
-                                    }
+                                    pixelsArray[pos++] = index == 0x7 ? palette[buf.get() & 0xff] : SPEC_COLORS[index];
                                     xx++;
                                     if (xx >= x + width) {
                                         pos += scanLineDiff;
@@ -178,7 +169,6 @@ public class Def extends DefInfo {
 
                                 left -= count;
                             }
-                            System.out.println();
                         }
                     }
                 }
@@ -298,7 +288,7 @@ public class Def extends DefInfo {
                             } else {
                                 int count = 1;
                                 int xx = x;
-                                while (xx + 1 < packedFrame.box.width && count < 256 && paletteMap.get(scanline[xx + 1]) >= 8) {
+                                while (xx + 1 < packedFrame.box.width && count < 256 && (paletteMap.get(scanline[xx + 1]) & 0xff) >= 8) {
                                     count++;
                                     xx++;
                                 }
@@ -336,7 +326,7 @@ public class Def extends DefInfo {
                             } else {
                                 int count = 1;
                                 int xx = x;
-                                while (xx + 1 < packedFrame.box.width && count < 32 && paletteMap.get(scanline[xx + 1]) >= 6) {
+                                while (xx + 1 < packedFrame.box.width && count < 32 && (paletteMap.get(scanline[xx + 1]) & 0xff) >= 6) {
                                     count++;
                                     xx++;
                                 }
@@ -352,7 +342,6 @@ public class Def extends DefInfo {
                 }
                 case 3 -> {
                     int blocksCount = packedFrame.box.width * packedFrame.box.height / 32;
-                    Map<HashArray, Integer> offsets = new HashMap<>();
                     int offsetsPos = buffer.position();
 
                     buffer.position(offsetsPos + blocksCount * 2);

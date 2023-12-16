@@ -313,16 +313,23 @@ public class Pack {
     }
 
     private static void execDiff(Path self, List<String> args) throws Exception {
-        Properties arguments = getArguments(self, args);
+        Properties cfg = getArguments(self, args);
 
-        String leftDir = arguments.getProperty("left_dir");
-        String rightDir = arguments.getProperty("right_dir");
-        String logs = arguments.getProperty("logsPath", "logs");
-        String nick = arguments.getProperty("userName", "unknown");
+        String leftDir = cfg.getProperty("left_dir");
+        String rightDir = cfg.getProperty("right_dir");
+        String logs = cfg.getProperty("logsPath", "logs");
+        String nick = cfg.getProperty("userName", "unknown");
 
-        String cfgDir = arguments.getProperty("commonCfgDir");
+        String cfgDir = cfg.getProperty("commonCfgDir");
 
-        DiffUi gui = new DiffUi(Path.of(leftDir), Path.of(rightDir), Path.of(cfgDir, "diff.cfg"), self.resolve(logs).resolve("sync"), nick);
+        try (BufferedReader stream = Files.newBufferedReader(Path.of(cfgDir, "diff.cfg"))) {
+            cfg.load(stream);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+        applyArgs(args, cfg);
+
+        DiffUi gui = new DiffUi(Path.of(leftDir), Path.of(rightDir), cfg, self.resolve(logs).resolve("sync"), nick);
 
         run(gui);
     }

@@ -49,8 +49,10 @@ import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.prefs.Preferences;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import static com.github.artyomcool.lodinfra.ui.Ui.*;
 import static javafx.scene.control.TreeTableView.CONSTRAINED_RESIZE_POLICY;
 
 public class DiffUi extends Application {
@@ -77,27 +79,17 @@ public class DiffUi extends Application {
     private TreeItem<Item> rootItem;
     private WatchService watchService;
     private TextField search;
+    private CheckBox searchRegex;
+    private CheckBox searchCase;
+    private Pattern searchPattern;
 
-    public DiffUi(Path localPath, Path remotePath, Path cfg, Path logs, String nick) {
+    public DiffUi(Path localPath, Path remotePath, Properties cfg, Path logs, String nick) {
         //localPath = remotePath = Path.of("C:\\Users\\Raider\\Desktop\\shared\\HotA\\Data\\");
         this.localPath = localPath.toAbsolutePath();
         this.remotePath = remotePath.toAbsolutePath();
         this.logs = logs;
         this.nick = nick;
-
-        try (BufferedReader stream = Files.newBufferedReader(cfg)) {
-            this.cfg = new Properties();
-            this.cfg.load(stream);
-
-            System.out.println();
-            System.out.println("DiffUi cfg " + cfg);
-            for (String propertyName : this.cfg.stringPropertyNames()) {
-                System.out.println(propertyName + "=" + this.cfg.getProperty(propertyName));
-            }
-
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
-        }
+        this.cfg = cfg;
     }
 
     @Override
@@ -289,12 +281,14 @@ public class DiffUi extends Application {
     private VBox files(StackPane root) throws IOException {
         ToggleButton fetch = new ToggleButton("Fetch");
         fetch.setGraphic(downloadIcon());
+        ToggleButton game = new ToggleButton("Game");
         ToggleButton observe = new ToggleButton("Observe");
+        ToggleButton inProgress = new ToggleButton("In Progress");
         ToggleButton push = new ToggleButton("Push");
         push.setGraphic(uploadIcon());
-        ToggleButton inProgress = new ToggleButton("In Progress");
         SegmentedButton modes = new SegmentedButton(
                 fetch,
+                game,
                 observe,
                 inProgress,
                 push
@@ -325,10 +319,18 @@ public class DiffUi extends Application {
         panelWrapper.setAlignment(Pos.CENTER);
 
         StackPane listWrapper = new StackPane();
+        Runnable r = () -> {
+            searchPattern = null;
+            onFilterChanged.accept(search.getText());
+        };
         search = new TextField();
         search.setPromptText("Search...");
-        search.textProperty().addListener((observable, oldValue, newValue) -> onFilterChanged.accept(newValue));
-        VBox listParent = new VBox(panelWrapper, search, listWrapper);
+        search.textProperty().addListener((observable, oldValue, newValue) -> r.run());
+        searchCase = new JFXCheckBox("Cc");
+        searchRegex = new JFXCheckBox(".*");
+        searchCase.setOnAction(e -> r.run());
+        searchRegex.setOnAction(e -> r.run());
+        VBox listParent = new VBox(panelWrapper, line(growH(search), searchCase, searchRegex), listWrapper);
         listParent.setFillWidth(true);
         VBox.setMargin(panelWrapper, padding);
         VBox.setVgrow(listWrapper, Priority.ALWAYS);
@@ -378,7 +380,6 @@ public class DiffUi extends Application {
             }
 
             private void updateRoot() {
-                onFilterChanged = s -> updateRoot();
                 cachedGlobalRoot = rootItem;
                 itemTreeItem = DiffUi.this.filterForFetch();
                 fetchList.setRoot(itemTreeItem);
@@ -396,6 +397,7 @@ public class DiffUi extends Application {
                     rightPanel.getChildren().clear();
                     listWrapper.getChildren().setAll(fetchList);
 
+                    onFilterChanged = s -> updateRoot();
                     onFilesChangedAction = treeItem -> {
                         rootItem = treeItem;
                         updateRoot();
@@ -543,7 +545,6 @@ public class DiffUi extends Application {
             }
 
             private void updateRoot() {
-                onFilterChanged = s -> updateRoot();
                 cachedGlobalRoot = rootItem;
                 itemTreeItem = DiffUi.this.filterForPush();
                 pushList.setRoot(itemTreeItem);
@@ -552,6 +553,7 @@ public class DiffUi extends Application {
             @Override
             public void changed(ObservableValue<? extends Boolean> observable, Boolean oldValue, Boolean newValue) {
                 if (newValue) {
+                    onFilterChanged = s -> updateRoot();
                     if (cachedGlobalRoot != rootItem) {
                         updateRoot();
                     }
@@ -583,6 +585,7 @@ public class DiffUi extends Application {
                     rightPanel.getChildren().clear();
                     listWrapper.getChildren().setAll(observeList);
 
+                    onFilterChanged = s -> updateRoot();
                     onFilesChangedAction = treeItem -> {
                         rootItem = treeItem;
                         updateRoot();
@@ -591,9 +594,8 @@ public class DiffUi extends Application {
             }
 
             private void updateRoot() {
-                onFilterChanged = s -> updateRoot();
                 cachedGlobalRoot = rootItem;
-                itemTreeItem = DiffUi.this.filterForObserve();
+                itemTreeItem = DiffUi.this.filterForObserve(rootItem);
                 observeList.setRoot(itemTreeItem);
             }
         });
@@ -615,6 +617,7 @@ public class DiffUi extends Application {
                     rightPanel.getChildren().clear();
                     listWrapper.getChildren().setAll(inProgressList);
 
+                    onFilterChanged = s -> updateRoot();
                     onFilesChangedAction = treeItem -> {
                         rootItem = treeItem;
                         updateRoot();
@@ -631,6 +634,33 @@ public class DiffUi extends Application {
                 if (checkBox.isSelected()) {
                     //rebuild();
                 }
+            }
+        });
+        game.selectedProperty().addListener(new ChangeListener<>() {
+
+            private TreeItem<Item> root;
+            private TreeItem<Item> itemTreeItem;
+            final Map<Item, ItemAction> gameActions = new HashMap<>();
+            final JFXTreeTableView<Item> gameList = createListComponent(true, false, gameActions);
+
+            @Override
+            public void changed(ObservableValue<? extends Boolean> observable, Boolean oldValue, Boolean newValue) {
+                if (newValue) {
+                    updateRoot();
+                    leftPanel.getChildren().clear();
+                    rightPanel.getChildren().clear();
+                    listWrapper.getChildren().setAll(gameList);
+
+                    onFilterChanged = s -> updateRoot();
+                }
+            }
+
+            private void updateRoot() {
+                if (root == null) {
+                    root = loadTree(Path.of(cfg.getProperty("gameDir"), "Data"));
+                }
+                itemTreeItem = DiffUi.this.filterForObserve(root);
+                gameList.setRoot(itemTreeItem);
             }
         });
 
@@ -907,19 +937,6 @@ public class DiffUi extends Application {
                                     Runtime.getRuntime().exec("explorer /select, " + item.local);
                                 } catch (IOException ex) {
                                     throw new RuntimeException(ex);
-                                }
-                                e.consume();
-                            } else if (e.getClickCount() == 2) {
-                                TreeItem<Item> treeItem = getTreeItem();
-                                String itemName = item.local.name.toLowerCase();
-                                if (treeItem.getChildren().isEmpty() && (item.local.isFile || item.remote.isFile)) {
-                                    if (itemName.endsWith(".lod")) {
-                                        expandLod(item, treeItem);
-                                    } else if (itemName.endsWith(".d32")) {
-                                        //unpackD32(item);
-                                    } else if (itemName.endsWith(".def")) {
-                                        //unpackDef(item);
-                                    }
                                 }
                                 e.consume();
                             }
@@ -1317,61 +1334,36 @@ public class DiffUi extends Application {
         getHostServices().showDocument(path.toString());
     }*/
 
-    private void expandLod(Item item, TreeItem<Item> treeItem) {
+    private void expandLod(TreeItem<Item> treeItem) {
         TreeSet<String> allResources = new TreeSet<>();
         Map<String, LodFile.SubFileMeta> localMapping = new HashMap<>();
-        Map<String, LodFile.SubFileMeta> remoteMapping = new HashMap<>();
+        FileInfo local = treeItem.getValue().local;
 
         try {
-            if (item.local.isFile) {
-                LodFile lod = LodFile.load(item.local.path);
+            if (local.isFile) {
+                LodFile lod = LodFile.load(local.path);
                 for (LodFile.SubFileMeta subFile : lod.subFiles) {
                     String name = subFile.nameAsString.toLowerCase();
                     allResources.add(name);
                     localMapping.put(name, subFile);
                 }
             }
-            if (item.remote.isFile) {
-                LodFile lod = LodFile.load(item.remote.path);
-                for (LodFile.SubFileMeta subFile : lod.subFiles) {
-                    String name = subFile.nameAsString.toLowerCase();
-                    allResources.add(name);
-                    remoteMapping.put(name, subFile);
-                }
-            }
 
             List<TreeItem<Item>> items = new ArrayList<>();
             for (String res : allResources) {
                 LodFile.SubFileMeta localMeta = localMapping.get(res);
-                LodFile.SubFileMeta remoteMeta = remoteMapping.get(res);
-
-                String localName = localMeta == null
-                        ? remoteMeta.nameAsString
-                        : localMeta.nameAsString;
-
-                String remoteName = remoteMeta == null
-                        ? localMeta.nameAsString
-                        : remoteMeta.nameAsString;
-
+                String localName = localMeta.nameAsString;
 
                 FileInfo localFile = new FileInfo(
-                        item.local.path.resolveSibling(item.local.path.getFileName() + "=@=@=" + localName),
+                        local.path.resolveSibling(local.path.getFileName() + "=@=@=" + localName),
                         localName,
-                        item.local.lastModified,
-                        localMeta == null ? null : (long) localMeta.uncompressedSize,
+                        local.lastModified,
+                        (long) localMeta.uncompressedSize,
                         false,
-                        localMeta != null
-                );
-                FileInfo remoteFile = new FileInfo(
-                        item.remote.path.resolveSibling(item.remote.path.getFileName() + "=@=@=" + remoteName),
-                        remoteName,
-                        item.remote.lastModified,
-                        remoteMeta == null ? null : (long) remoteMeta.uncompressedSize,
-                        false,
-                        remoteMeta != null
+                        true
                 );
 
-                items.add(new TreeItem<>(new Item(localFile, remoteFile, true)));
+                items.add(new TreeItem<>(new Item(localFile, localFile, true)));
             }
             treeItem.getChildren().setAll(items);
             treeItem.setExpanded(true);
@@ -1380,7 +1372,7 @@ public class DiffUi extends Application {
         }
     }
 
-    private TreeItem<Item> filterForObserve() {
+    private TreeItem<Item> filterForObserve(TreeItem<Item> rootItem) {
         Predicate<TreeItem<Item>> preFilter = item -> true;
         Function<TreeItem<Item>, TreeItem<Item>> fold = item -> {
             if (item.getChildren().size() == 1) {
@@ -1468,6 +1460,23 @@ public class DiffUi extends Application {
         return filter == null ? new TreeItem<>(rootItem.getValue()) : filter;
     }
 
+    private boolean matchesToFilter(String itemName) {
+        boolean regex = searchRegex.isSelected();
+        boolean caseSensitive = searchCase.isSelected();
+        String searchText = search.getText();
+        if (!regex) {
+            return caseSensitive
+                    ? itemName.contains(searchText)
+                    : itemName.toLowerCase().contains(searchText.toLowerCase());
+        }
+
+        if (searchPattern == null) {
+            searchPattern = Pattern.compile(searchText, caseSensitive ? 0 : Pattern.CASE_INSENSITIVE);
+        }
+
+        return searchPattern.matcher(itemName).matches();
+    }
+
     private TreeItem<Item> filter(
             TreeItem<Item> item,
             Predicate<TreeItem<Item>> preFilter,
@@ -1476,7 +1485,8 @@ public class DiffUi extends Application {
         if (!preFilter.test(item)) {
             return null;
         }
-        if ((item.getValue().local.isFile || item.getValue().remote.isFile) && !item.getValue().local.name.toLowerCase().contains(search.getText().toLowerCase())) {
+        if ((item.getValue().local.isFile || item.getValue().remote.isFile) && item.isLeaf()
+                && !matchesToFilter(item.getValue().local.name)) {
             return null;
         }
         ObservableList<TreeItem<Item>> children = item.getChildren();
@@ -1543,6 +1553,60 @@ public class DiffUi extends Application {
         return rootItem;
     }
 
+    private TreeItem<Item> loadTree(Path path) {
+        try {
+            String ignoreCommon = cfg.getProperty("ignore.common", "$^");
+            Pattern ignoreLocal = Pattern.compile("(" + cfg.getProperty("ignore.local", "$^") + ")|(" + ignoreCommon + ")");
+
+            FileInfo info = new FileInfo(path, path.toString(), Files.getLastModifiedTime(path), null, true, false);
+            TreeItem<Item> rootItem = new TreeItem<>(new Item(info, info));
+            List<Path> allPaths;
+            Map<Path, TreeItem<Item>> expandedTree = new HashMap<>();
+
+            try (Stream<Path> w1 = Files.walk(path)) {
+                allPaths = w1.filter(p -> !ignoreLocal.matcher(p.toAbsolutePath().normalize().toString()).matches())
+                        .map(path::relativize)
+                        .collect(Collectors.toList());
+            }
+
+            for (Path p : allPaths) {
+                if (p.getFileName().toString().isEmpty()) {
+                    expandedTree.put(p, rootItem);
+                    continue;
+                }
+
+                Path local = path.resolve(p);
+
+                boolean localExists = Files.exists(local);
+                boolean localIsDirectory = Files.isDirectory(local);
+                FileInfo file = new FileInfo(
+                        local,
+                        p.getFileName().toString(),
+                        localExists && !localIsDirectory ? Files.getLastModifiedTime(local) : null,
+                        localExists && !localIsDirectory ? Files.size(local) : null,
+                        localIsDirectory,
+                        localExists && !localIsDirectory
+                );
+
+                TreeItem<Item> parent = p.getParent() == null ? rootItem : expandedTree.get(p.getParent());
+                TreeItem<Item> item = new TreeItem<>(new Item(file, file));
+
+                if (localExists && !localIsDirectory) {
+                    String itemName = p.getFileName().toString().toLowerCase();
+                    if (itemName.endsWith(".lod")) {
+                        expandLod(item);
+                    }
+                }
+
+                parent.getChildren().add(item);
+                expandedTree.put(p, item);
+            }
+            return rootItem;
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     private Set<Path> loadAllPaths() throws IOException {
         String ignoreCommon = cfg.getProperty("ignore.common", "$^");
         Pattern ignoreLocal = Pattern.compile("(" + cfg.getProperty("ignore.local", "$^") + ")|(" + ignoreCommon + ")");
@@ -1579,51 +1643,6 @@ public class DiffUi extends Application {
 
     private void show(TreeItem<Item> treeItem) {
         if (treeItem == null) {
-            return;
-        }
-        if (treeItem.getValue().local.path.toString().endsWith(".msk")) {
-            try {
-                byte[] bytes = Files.readAllBytes(treeItem.getValue().local.path);
-                int w = bytes[0] & 0xff;
-                int h = bytes[1] & 0xff;
-
-                int drawBottomLine0 = bytes[7];
-                int drawBottomLine1 = bytes[6];
-                int drawBottomLine2 = bytes[5];
-                int drawBottomLine3 = bytes[4];
-                int drawBottomLine4 = bytes[3];
-                int drawBottomLine5 = bytes[2];
-
-                int drawRight0Line0 = drawBottomLine0 >>> 7 & 1;
-                int drawRight1Line0 = drawBottomLine0 >>> 6 & 1;
-                int drawRight2Line0 = drawBottomLine0 >>> 5 & 1;
-                int drawRight3Line0 = drawBottomLine0 >>> 4 & 1;
-                int drawRight4Line0 = drawBottomLine0 >>> 3 & 1;
-                int drawRight5Line0 = drawBottomLine0 >>> 2 & 1;
-                int drawRight6Line0 = drawBottomLine0 >>> 1 & 1;
-                int drawRight7Line0 = drawBottomLine0 >>> 0 & 1;
-
-                System.out.println(w + "x" + h);
-                System.out.println("----PIXELS----");
-                for (int y = 8 - h; y < 8; y++) {
-                    int line = bytes[y];
-                    for (int x = 8 - w; x < 8; x++) {
-                        System.out.print((line >>> x & 1) == 1 ? "x" : "o");
-                    }
-                    System.out.println();
-                }
-                System.out.println("----SHADOW----");
-                for (int y = 14 - h; y < 14; y++) {
-                    int line = bytes[y];
-                    for (int x = 8 - w; x < 8; x++) {
-                        System.out.print((line >>> x & 1) == 1 ? "x" : "o");
-                    }
-                    System.out.println();
-                }
-                System.out.println("--------------");
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
             return;
         }
         preview.setImages(treeItem.getValue().local.path, treeItem.getValue().remote.path);

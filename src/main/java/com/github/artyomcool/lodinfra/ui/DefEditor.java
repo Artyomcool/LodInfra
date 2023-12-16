@@ -11,7 +11,6 @@ import javafx.geometry.Insets;
 import javafx.geometry.Orientation;
 import javafx.geometry.Pos;
 import javafx.scene.Group;
-import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.control.skin.SeparatorSkin;
@@ -48,6 +47,8 @@ import java.util.concurrent.Executors;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+
+import static com.github.artyomcool.lodinfra.ui.Ui.*;
 
 public class DefEditor extends StackPane {
 
@@ -1105,14 +1106,6 @@ public class DefEditor extends StackPane {
         return def;
     }
 
-    private static RuntimeException showError(String error) {
-        Alert alert = new Alert(Alert.AlertType.ERROR);
-        alert.setTitle("Error");
-        alert.setContentText(error);
-        alert.showAndWait();
-        return new RuntimeException(error);
-    }
-
     private static Map<DefInfo.Frame, DefInfo.FrameInfo> getLinks(DefInfo def) {
         Map<String, Box> shaToBox = new HashMap<>();
         Map<DefInfo.PackedFrame, DefInfo.FrameInfo> frameInfoMap = new LinkedHashMap<>();
@@ -1148,87 +1141,6 @@ public class DefEditor extends StackPane {
         }
 
         return result;
-    }
-
-    private static Pane groupButtons(Control... nodes) {
-        HBox result = new HBox(2, nodes) {
-            @Override
-            protected void layoutChildren() {
-                for (Control node : nodes) {
-                    node.setPrefWidth((getWidth() - getSpacing() * (nodes.length - 1)) / nodes.length);
-                }
-                super.layoutChildren();
-            }
-        };
-        result.setPadding(new Insets(2, 0, 2, 0));
-        return result;
-    }
-
-    private static <T extends ButtonBase> T withAction(T button, Runnable action) {
-        button.setOnAction(a -> action.run());
-        return button;
-    }
-
-    private static Button button(String name, Runnable action) {
-        return withAction(new Button(name), action);
-    }
-
-    private static JFXButton jfxbutton(String name, Runnable action) {
-        return withAction(new JFXButton(name), action);
-    }
-
-    private static <T extends Region> T pad(int padding, T node) {
-        node.setPadding(new Insets(padding));
-        return node;
-    }
-
-    private static <T extends Region> T border(Color color, T node) {
-        node.setBorder(new Border(new BorderStroke(color, BorderStrokeStyle.SOLID, null, BorderStroke.THIN)));
-        return node;
-    }
-
-    private static <T extends Region> T bg(Color color, T node) {
-        node.setBackground(new Background(new BackgroundFill(color, null, null)));
-        return node;
-    }
-
-    private static Node border(Color color, Node node) {
-        return new VBox(new HBox(border(color, new StackPane(node))));
-    }
-
-    private static <T extends Node> T grow(T node) {
-        VBox.setVgrow(node, Priority.ALWAYS);
-        HBox.setHgrow(node, Priority.ALWAYS);
-        return node;
-    }
-
-    private static <T extends Node> T growH(T node) {
-        HBox.setHgrow(node, Priority.ALWAYS);
-        return node;
-    }
-
-    private static HBox line(Node... nodes) {
-        return line(2, nodes);
-    }
-
-    private static HBox line(int padding, Node... nodes) {
-        return line(padding, 8, nodes);
-    }
-
-    private static HBox line(int padding, int spacing, Node... nodes) {
-        HBox box = pad(padding, new HBox(spacing, nodes));
-        box.setAlignment(Pos.CENTER_LEFT);
-        return box;
-    }
-
-    private static <T extends Region> T width(int w, T node) {
-        node.setPrefWidth(w);
-        return node;
-    }
-
-    private static <T extends Region> T height(int h, T node) {
-        node.setPrefHeight(h);
-        return node;
     }
 
     private static class HistoryItem {
