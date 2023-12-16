@@ -195,7 +195,8 @@ public class DefEditor extends StackPane {
                         width(220, groupButtons(
                                 jfxbutton("Extract", this::extract),
                                 jfxbutton("Renew", this::renew),
-                                jfxbutton("Save", this::save)
+                                jfxbutton("Save", this::save),
+                                jfxbutton("Msk", this::saveMsk)
                         )),
                         new Separator(Orientation.VERTICAL),
                         line(new Label("Backgrounds"))
@@ -1009,6 +1010,45 @@ public class DefEditor extends StackPane {
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    private void saveMsk() {
+        DefInfo def = currentDef();
+        if (def.fullWidth % 32 != 0 || def.fullHeight % 32 != 0) {
+            throw new RuntimeException("Wrong width/height");
+        }
+        Msk msk = new Msk(def.fullWidth / 32, def.fullHeight / 32);
+        for (DefInfo.Group group : def.groups) {
+            for (DefInfo.Frame frame : group.frames) {
+                for (int y = 0; y < frame.fullHeight; y++) {
+                    a: for (int x = 0; x < frame.fullWidth; x++) {
+                        int cm = frame.colorMul(x, y);
+                        if (cm == DefInfo.SPEC_COLORS[0]) {
+                            continue;
+                        }
+                        for (int i = 1; i < 6; i++) {
+                            int specColor = DefInfo.SPEC_COLORS[i];
+                            if (cm == specColor) {
+                                msk.markIsShadow(x / 32, y / 32);
+                                continue a;
+                            }
+                        }
+
+                        msk.markIsDirty(x / 32, y / 32);
+                    }
+                }
+            }
+        }
+
+        String name = def.path.getFileName().toString();
+        Path path = def.path.resolveSibling(name.substring(0, name.indexOf(".")) + ".msk");
+        try {
+            Files.deleteIfExists(path);
+            Files.write(path, msk.bytes());
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+
     }
 
     private static DefInfo.Frame ensureNoAlpha(DefInfo.Frame frame) {

@@ -274,6 +274,10 @@ public class DefInfo {
             return ImgFilesUtils.unmultiply(pixels.get(x + y * fullWidth));
         }
 
+        public int colorMul(int x, int y) {
+            return pixels.get(x + y * fullWidth);
+        }
+
         public IntBuffer pixelsWithSize(int w, int h) {
             if (fullWidth == w && fullHeight == h) {
                 return pixels.duplicate();
