@@ -79,6 +79,7 @@ public class DiffUi extends Application {
     private TextField search;
 
     public DiffUi(Path localPath, Path remotePath, Path cfg, Path logs, String nick) {
+        //localPath = remotePath = Path.of("C:\\Users\\Raider\\Desktop\\shared\\HotA\\Data\\");
         this.localPath = localPath.toAbsolutePath();
         this.remotePath = remotePath.toAbsolutePath();
         this.logs = logs;

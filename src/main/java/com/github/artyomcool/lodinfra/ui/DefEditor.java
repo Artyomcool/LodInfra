@@ -1004,7 +1004,8 @@ public class DefEditor extends StackPane {
         setDef(load, load.first());
 
         try {
-            Files.write(def.path, packed.array(), StandardOpenOption.WRITE, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+            Files.deleteIfExists(def.path);
+            Files.write(def.path, packed.array());
         } catch (IOException e) {
             throw new RuntimeException(e);
         }

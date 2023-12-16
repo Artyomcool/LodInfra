@@ -1,5 +1,7 @@
 package com.github.artyomcool.lodinfra.h3common;
 
+import com.github.artyomcool.lodinfra.ui.Box;
+
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.IntBuffer;
@@ -174,7 +176,7 @@ public class Def extends DefInfo {
 
                 DefInfo.Frame frame = new DefInfo.Frame(group, fullWidth, fullHeight, pixels);
                 frame.name = names[j];
-                frame.compression = buffer.getInt(offset + 4);
+                frame.compression = compression;
                 group.frames.add(frame);
             }
 
@@ -243,6 +245,14 @@ public class Def extends DefInfo {
             buffer.putInt(packedFrame.frame.fullWidth);
             buffer.putInt(packedFrame.frame.fullHeight);
 
+            if (packedFrame.frame.compression == 3) {
+                int x = packedFrame.box.x / 32 * 32;
+                int w = packedFrame.box.width + (packedFrame.box.x - x);
+                if (w % 32 != 0) {
+                    w = (w / 32 + 1) * 32;
+                }
+                packedFrame = new PackedFrame(packedFrame.frame, new Box(x, packedFrame.box.y, w, packedFrame.box.height));
+            }
             buffer.putInt(packedFrame.box.width);
             buffer.putInt(packedFrame.box.height);
             buffer.putInt(packedFrame.box.x);
@@ -281,7 +291,7 @@ public class Def extends DefInfo {
                                 } else {
                                     int count = 1;
                                     int xx = x;
-                                    while (xx + 1 < packedFrame.box.width && count < 256 && paletteMap.get(scanline[xx + 1]) < 8) {
+                                    while (xx + 1 < packedFrame.box.width && count < 256 && paletteMap.get(scanline[xx + 1]) >= 8) {
                                         count++;
                                         xx++;
                                     }
@@ -322,7 +332,7 @@ public class Def extends DefInfo {
                                 } else {
                                     int count = 1;
                                     int xx = x;
-                                    while (xx + 1 < packedFrame.box.width && count < 32 && paletteMap.get(scanline[xx + 1]) < 6) {
+                                    while (xx + 1 < packedFrame.box.width && count < 32 && paletteMap.get(scanline[xx + 1]) >= 6) {
                                         count++;
                                         xx++;
                                     }
@@ -344,21 +354,20 @@ public class Def extends DefInfo {
 
                     buffer.position(offsetsPos + blocksCount * 2);
 
-                    for (int y = 0; y < packedFrame.box.height; y += 32) {
+                    int i = 0;
+                    for (int y = 0; y < packedFrame.box.height; y++) {
                         for (int xw = 0; xw < packedFrame.box.width; xw += 32) {
-                            int[] scanline = new int[32 * 32];
-                            for (int yy = 0; yy < 32; yy++) {
-                                System.arraycopy(packedFrame.scanline(y + yy, xw, 32), 0, scanline, yy * 32, 32);
-                            }
+                            int[] scanline = new int[32];
+                            System.arraycopy(packedFrame.scanline(y, xw, 32), 0, scanline, 0, 32);
                             int offset = offsets.computeIfAbsent(new HashArray(scanline), k -> buffer.position());
                             if (offset == buffer.position()) {
-                                for (int x = 0; x < 32; ) {
+                                for (int x = 0; x < scanline.length; ) {
                                     int color = scanline[x];
                                     int index = paletteMap.get(color) & 0xff;
                                     if (index < 6) {
                                         int count = 1;
                                         int xx = x + 1;
-                                        while (xx < scanline.length && count < 32 && scanline[xx] == color) {
+                                        while (xx < scanline.length && scanline[xx] == color) {
                                             count++;
                                             xx++;
                                         }
@@ -367,7 +376,7 @@ public class Def extends DefInfo {
                                     } else {
                                         int count = 1;
                                         int xx = x;
-                                        while (xx + 1 < scanline.length && count < 32 && paletteMap.get(scanline[xx + 1]) < 6) {
+                                        while (xx + 1 < scanline.length && paletteMap.get(scanline[xx + 1]) >= 6) {
                                             count++;
                                             xx++;
                                         }
@@ -379,7 +388,7 @@ public class Def extends DefInfo {
                                     }
                                 }
                             }
-                            buffer.putShort(offsetsPos + y * 2, (short) (offset - offsetsPos));
+                            buffer.putShort(offsetsPos + (i++ * 2), (short) (offset - offsetsPos));
                         }
                     }
                 }

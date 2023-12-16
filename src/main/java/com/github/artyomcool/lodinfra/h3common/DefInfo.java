@@ -1,6 +1,7 @@
 package com.github.artyomcool.lodinfra.h3common;
 
 import com.github.artyomcool.lodinfra.ui.Box;
+import com.github.artyomcool.lodinfra.ui.DefType;
 import com.github.artyomcool.lodinfra.ui.ImgFilesUtils;
 
 import java.nio.ByteBuffer;
@@ -127,7 +128,19 @@ public class DefInfo {
 
     public DefInfo withType(int type) {
         DefInfo result = cloneBase();
-        result.groups.addAll(groups);
+        for (Group group : groups) {
+            Group rg = group.cloneBase(result);
+            for (Frame frame : group.frames) {
+                Frame fr = frame.cloneBase(rg);
+                if (type == DefType.DefAdventureObject.type || type == DefType.DefAdventureHero.type) {
+                    fr.compression = 3;
+                } else if (type == DefType.DefGroundTile.type) {
+                    fr.compression = hasSpecialColors(frame.pixels.duplicate()) ? 2 : 0;
+                } else {
+                    fr.compression = 1;
+                }
+            }
+        }
         result.type = type;
 
 /*
@@ -139,16 +152,19 @@ public class DefInfo {
                 DefMousePointer("Def-sprite: mouse pointer", 0x46),
                 DefInterface("Def-sprite: mouse pointer", 0x47),
                 DefCombatHero("Def-sprite: combat hero", 0x49),
-
-        int compression;
-        if (type == DefType.DefAdventureObject.type || type == DefType.DefAdventureHero.type) {
-            compression = 3;
-        } else if (type == DefType.DefGroundTile.type) {
-            compression = hasSpecialColors ? 2 : 0;
-        } else {
-            compression = 1;
-        }*/
+*/
         return result;
+    }
+
+    private boolean hasSpecialColors(IntBuffer pixels) {
+        while (pixels.hasRemaining()) {
+            for (int specColor : SPEC_COLORS) {
+                if (pixels.get() == specColor) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     public Frame first() {
@@ -208,6 +224,7 @@ public class DefInfo {
             this.group = group;
             this.fullWidth = frame.fullWidth;
             this.fullHeight = frame.fullHeight;
+            this.compression = frame.compression;
             this.name = frame.name;
             this.pixels = frame.pixels;
             this.pixelsSha = frame.pixelsSha;
@@ -371,9 +388,17 @@ public class DefInfo {
 
         public int[] scanline(int y, int dx, int w) {
             int[] scanline = new int[w];
-            frame.pixels.get(box.x + dx  + (y + box.y) * frame.fullWidth, scanline);
-            for (int i = 0; i < scanline.length; i++) {
+            if (y + box.y >= frame.fullHeight) {
+                Arrays.fill(scanline, SPEC_COLORS[0]);
+                return scanline;
+            }
+            w = Math.min(w, frame.fullWidth - (box.x + dx));
+            frame.pixels.get(box.x + dx + (y + box.y) * frame.fullWidth, scanline, 0, w);
+            for (int i = 0; i < w; i++) {
                 scanline[i] = ImgFilesUtils.unmultiply(scanline[i]);
+            }
+            for (int i = w; i < scanline.length; i++) {
+                scanline[i] = SPEC_COLORS[0];
             }
             return scanline;
         }
