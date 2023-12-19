@@ -838,7 +838,7 @@ public class DiffUi extends Application {
         });
 
         sizeA.setCellValueFactory(param -> new SimpleObjectProperty<>(param.getValue().getValue().local.size));
-        sizeA.setCellFactory(new Callback<TreeTableColumn<Item, Long>, TreeTableCell<Item, Long>>() {
+        sizeA.setCellFactory(new Callback<>() {
             @Override
             public TreeTableCell<Item, Long> call(TreeTableColumn<Item, Long> param) {
                 return new TreeTableCell<>() {
@@ -1465,9 +1465,27 @@ public class DiffUi extends Application {
         boolean caseSensitive = searchCase.isSelected();
         String searchText = search.getText();
         if (!regex) {
-            return caseSensitive
-                    ? itemName.contains(searchText)
-                    : itemName.toLowerCase().contains(searchText.toLowerCase());
+            if (!caseSensitive) {
+                itemName = itemName.toLowerCase();
+                searchText = searchText.toLowerCase();
+            }
+            if (!searchText.contains("*")) {
+                return itemName.contains(searchText);
+            }
+
+            String[] parts = searchText.split("\\*");
+            if (!itemName.startsWith(parts[0])) {
+                return false;
+            }
+            int startWith = 0;
+            for (String part : parts) {
+                int next = itemName.indexOf(part, startWith);
+                if (next == -1) {
+                    return false;
+                }
+                startWith = next + part.length();
+            }
+            return true;
         }
 
         if (searchPattern == null) {
