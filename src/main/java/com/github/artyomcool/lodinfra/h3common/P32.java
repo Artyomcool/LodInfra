@@ -29,6 +29,7 @@ public class P32 extends Def {
         def.groups.add(group);
 
         IntBuffer pixels = IntBuffer.allocate(width * height);
+        buffer.position(imageOffset);
         for (int yy = height - 1; yy >= 0; yy--) {
             for (int xx = 0; xx < width; xx++) {
                 pixels.put(yy * width + xx, ImgFilesUtils.d32ToPcxColor(false, buffer.getInt()));

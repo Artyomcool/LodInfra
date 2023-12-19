@@ -54,6 +54,7 @@ import java.util.stream.Stream;
 
 import static com.github.artyomcool.lodinfra.ui.Ui.*;
 import static javafx.scene.control.TreeTableView.CONSTRAINED_RESIZE_POLICY;
+import static javafx.scene.control.TreeTableView.UNCONSTRAINED_RESIZE_POLICY;
 
 public class DiffUi extends Application {
 
@@ -100,8 +101,8 @@ public class DiffUi extends Application {
 
     record FileInfo(Path path, String name, FileTime lastModified, Long size, boolean isDirectory, boolean isFile) {
 
-        private static final SimpleDateFormat date = new SimpleDateFormat("dd.MM.yyyy");
-        private static final SimpleDateFormat today = new SimpleDateFormat("HH:mm");
+        private static final SimpleDateFormat date = new SimpleDateFormat(" yyyy-MM-dd");
+        private static final SimpleDateFormat today = new SimpleDateFormat("'Today' HH:mm");
 
         public FileInfo foldInto(FileInfo local) {
             return new FileInfo(
@@ -598,14 +599,16 @@ public class DiffUi extends Application {
                 if (gameRoot == null) {
                     gameRoot = loadTree(Path.of(cfg.getProperty("gameDir"), "Data"));
                 }
-                TreeItem<Item> gameFiles = DiffUi.this.filterForObserve(gameRoot);
-                TreeItem<Item> files = DiffUi.this.filterForObserve(rootItem);
-                files.setExpanded(true);
                 FileInfo root = new FileInfo(null, "Root", null, null, true, false);
-                itemTreeItem = new TreeItem<>(new Item(root, root));
-                itemTreeItem.getChildren().add(gameFiles);
-                itemTreeItem.getChildren().add(files);
-                cachedGlobalRoot = rootItem;
+                TreeItem<Item> rootItem = new TreeItem<>(new Item(root, root));
+                rootItem.getChildren().add(DiffUi.this.filterForObserve(DiffUi.this.rootItem));
+                rootItem.getChildren().add(DiffUi.this.filterForObserve(gameRoot));
+                for (TreeItem<Item> child : rootItem.getChildren()) {
+                    child.setExpanded(true);
+                }
+                itemTreeItem = rootItem;
+
+                cachedGlobalRoot = DiffUi.this.rootItem;
                 observeList.setRoot(itemTreeItem);
             }
         });
@@ -947,7 +950,7 @@ public class DiffUi extends Application {
 
         list.setShowRoot(false);
         list.setFixedCellSize(20);
-        list.setColumnResizePolicy(CONSTRAINED_RESIZE_POLICY);
+        list.setColumnResizePolicy(UNCONSTRAINED_RESIZE_POLICY);
         return list;
     }
 
@@ -1347,6 +1350,9 @@ public class DiffUi extends Application {
                 if (!item.getValue().local.isFile && !item.getValue().remote.isFile) {
                     return null;
                 }
+                if (!matchesToFilter(item.getValue().local.name)) {
+                    return null;
+                }
             }
             if (!search.getText().isEmpty()) {
                 item.setExpanded(true);
@@ -1474,6 +1480,9 @@ public class DiffUi extends Application {
             }
 
             String[] parts = searchText.split("\\*");
+            if (parts.length == 0) {
+                return true;
+            }
             if (!itemName.startsWith(parts[0])) {
                 return false;
             }
