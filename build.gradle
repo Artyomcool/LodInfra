@@ -42,7 +42,10 @@ compileJava {
             'javafx.controls/com.sun.javafx.scene.control.inputmap=LodInfra',
 
             '--add-exports',
-            'org.controlsfx.controls/impl.org.controlsfx.skin=LodInfra'
+            'javafx.controls/com.sun.javafx.scene.control=LodInfra',
+
+            '--add-exports',
+            'org.controlsfx.controls/impl.org.controlsfx.skin=LodInfra',
     ])
 }
 

@@ -7,6 +7,7 @@ import java.nio.ByteOrder;
 import java.nio.IntBuffer;
 import java.util.Arrays;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 
 public class D32 extends DefInfo {
@@ -96,8 +97,11 @@ public class D32 extends DefInfo {
     }
 
     public static ByteBuffer pack(DefInfo def, Map<DefInfo.Frame, FrameInfo> links) {
+        List<Group> groups = def.groups;
+        groups.removeIf(g -> g.frames.isEmpty());
+
         int maxIndex = 0;
-        for (Group group : def.groups) {
+        for (Group group : groups) {
             maxIndex = Math.max(maxIndex, group.groupIndex);
         }
 
@@ -106,7 +110,7 @@ public class D32 extends DefInfo {
         int headerSize = 24;
         int fullWidth = def.fullWidth;
         int fullHeight = def.fullHeight;
-        int activeGroupCount = def.groups.size();
+        int activeGroupCount = groups.size();
 
         int additionalHeaderSize = 8;
         int allGroupsCount = maxIndex + 1;
@@ -115,7 +119,7 @@ public class D32 extends DefInfo {
         int totalFrames = 0;
         int totalFramesDataSize = 0;
 
-        for (Group group : def.groups) {
+        for (Group group : groups) {
             int groupHeaderSize = 12;
             int framesCount = group.frames.size();
 
@@ -147,7 +151,7 @@ public class D32 extends DefInfo {
                 .putInt(allGroupsCount);
 
         int framesOffset = totalSizeBeforeFrames;
-        for (Group group : def.groups) {
+        for (Group group : groups) {
             int groupHeaderSize = 12;
             int groupIndex = group.groupIndex;
             int framesCount = group.frames.size();

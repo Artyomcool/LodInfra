@@ -126,6 +126,21 @@ public class DefInfo {
         return def;
     }
 
+    public static int compressionForType(DefInfo info, int type) {
+        for (Group group : info.groups) {
+            for (Frame frame : group.frames) {
+                if (type == DefType.DefAdventureObject.type || type == DefType.DefAdventureHero.type) {
+                    return  3;
+                } else if (type == DefType.DefGroundTile.type) {
+                    return hasSpecialColors(frame.pixels.duplicate()) ? 2 : 0;
+                } else {
+                    return  1;
+                }
+            }
+        }
+        return 1;
+    }
+
     public DefInfo withType(int type) {
         DefInfo result = cloneBase();
         for (Group group : groups) {
@@ -143,20 +158,10 @@ public class DefInfo {
         }
         result.type = type;
 
-/*
-        DefDefault("Def-sprite: default", 0x40),
-                DefCombatCreature("Def-sprite: combat creature", 0x42),
-                DefAdventureObject("Def-sprite: adventure object", 0x43),
-                DefAdventureHero("Def-sprite: adventure hero", 0x44),
-                DefGroundTile("Def-sprite: ground tiles", 0x45),
-                DefMousePointer("Def-sprite: mouse pointer", 0x46),
-                DefInterface("Def-sprite: mouse pointer", 0x47),
-                DefCombatHero("Def-sprite: combat hero", 0x49),
-*/
         return result;
     }
 
-    private boolean hasSpecialColors(IntBuffer pixels) {
+    private static boolean hasSpecialColors(IntBuffer pixels) {
         while (pixels.hasRemaining()) {
             for (int specColor : SPEC_COLORS) {
                 if (pixels.get() == specColor) {
@@ -548,6 +553,10 @@ public class DefInfo {
                     bottom = Math.max(y, bottom);
                 }
             }
+        }
+
+        if (left == Integer.MAX_VALUE) {
+            return new Box(0, 0, 1, 1);
         }
 
         return new Box(left, top, right - left + 1, bottom - top + 1);

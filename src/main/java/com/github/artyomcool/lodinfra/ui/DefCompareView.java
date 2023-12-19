@@ -4,30 +4,31 @@ import com.github.artyomcool.lodinfra.h3common.DefInfo;
 import com.jfoenix.controls.JFXButton;
 import com.jfoenix.controls.JFXCheckBox;
 import com.jfoenix.controls.JFXSlider;
+import com.sun.javafx.scene.control.ControlAcceleratorSupport;
 import javafx.application.Platform;
+import javafx.beans.value.ChangeListener;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Group;
 import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.control.Label;
-import javafx.scene.image.Image;
-import javafx.scene.image.PixelFormat;
-import javafx.scene.image.WritableImage;
 import javafx.scene.layout.HBox;
+import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.SVGPath;
 import javafx.stage.Modality;
 import javafx.stage.Stage;
 
+import java.lang.reflect.Field;
 import java.nio.file.Path;
 import java.util.Arrays;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import java.util.function.Function;
 
 public class DefCompareView extends VBox {
     private static final Executor LOADER = Executors.newSingleThreadExecutor(r -> {
@@ -188,6 +189,25 @@ public class DefCompareView extends VBox {
         root.start();
         animationSpeed.stop();
         stage.showAndWait();
+        Map<Object, ChangeListener<Scene>> listenerMap;
+        try {
+            //noinspection unchecked
+            Field declaredField = ControlAcceleratorSupport.class.getDeclaredField("sceneChangeListenerMap");
+            declaredField.setAccessible(true);
+            listenerMap = (Map<Object, ChangeListener<Scene>>) declaredField.get(null);
+        } catch (IllegalAccessException | NoSuchFieldException e) {
+            throw new RuntimeException(e);
+        }
+        for (Map.Entry<Object, ChangeListener<Scene>> entry : listenerMap.entrySet()) {
+            if (entry.getKey() instanceof Node) {
+                if (((Node) entry.getKey()).getScene() == scene) {
+                    entry.setValue((observable, oldValue, newValue) -> {
+                    });
+                }
+            }
+        }
+        stage.close();
+        scene.setRoot(new StackPane());
         root.stop();
         animationSpeed.start();
     }

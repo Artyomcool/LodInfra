@@ -281,14 +281,12 @@ public class DiffUi extends Application {
     private VBox files(StackPane root) throws IOException {
         ToggleButton fetch = new ToggleButton("Fetch");
         fetch.setGraphic(downloadIcon());
-        ToggleButton game = new ToggleButton("Game");
         ToggleButton observe = new ToggleButton("Observe");
         ToggleButton inProgress = new ToggleButton("In Progress");
         ToggleButton push = new ToggleButton("Push");
         push.setGraphic(uploadIcon());
         SegmentedButton modes = new SegmentedButton(
                 fetch,
-                game,
                 observe,
                 inProgress,
                 push
@@ -433,7 +431,9 @@ public class DiffUi extends Application {
             {
                 pushButton.setOnAction(a -> {
                     StringBuilder files = new StringBuilder();
-                    for (Map.Entry<Item, ItemAction> entry : pushActions.entrySet()) {
+                    List<Map.Entry<Item, ItemAction>> actions = new ArrayList<>(pushActions.entrySet());
+                    actions.sort(Comparator.comparing(c -> c.getKey().local.name.toLowerCase()));
+                    for (Map.Entry<Item, ItemAction> entry : actions) {
                         if (entry.getValue() != ItemAction.LOCAL_TO_REMOTE) {
                             continue;
                         }
@@ -572,6 +572,7 @@ public class DiffUi extends Application {
 
             private TreeItem<Item> cachedGlobalRoot;
             private TreeItem<Item> itemTreeItem;
+            private TreeItem<Item> gameRoot;
             final Map<Item, ItemAction> observeActions = new HashMap<>();
             final JFXTreeTableView<Item> observeList = createListComponent(true, false, observeActions);
 
@@ -594,8 +595,17 @@ public class DiffUi extends Application {
             }
 
             private void updateRoot() {
+                if (gameRoot == null) {
+                    gameRoot = loadTree(Path.of(cfg.getProperty("gameDir"), "Data"));
+                }
+                TreeItem<Item> gameFiles = DiffUi.this.filterForObserve(gameRoot);
+                TreeItem<Item> files = DiffUi.this.filterForObserve(rootItem);
+                files.setExpanded(true);
+                FileInfo root = new FileInfo(null, "Root", null, null, true, false);
+                itemTreeItem = new TreeItem<>(new Item(root, root));
+                itemTreeItem.getChildren().add(gameFiles);
+                itemTreeItem.getChildren().add(files);
                 cachedGlobalRoot = rootItem;
-                itemTreeItem = DiffUi.this.filterForObserve(rootItem);
                 observeList.setRoot(itemTreeItem);
             }
         });
@@ -627,40 +637,13 @@ public class DiffUi extends Application {
 
             private void updateRoot() {
                 cachedGlobalRoot = rootItem;
-                itemTreeItem = DiffUi.this.filterForInProgress();
+                itemTreeItem = DiffUi.this.filterForInProgress(localPath.resolve("restore"));
 
                 inProgressList.setRoot(itemTreeItem);
 
                 if (checkBox.isSelected()) {
                     //rebuild();
                 }
-            }
-        });
-        game.selectedProperty().addListener(new ChangeListener<>() {
-
-            private TreeItem<Item> root;
-            private TreeItem<Item> itemTreeItem;
-            final Map<Item, ItemAction> gameActions = new HashMap<>();
-            final JFXTreeTableView<Item> gameList = createListComponent(true, false, gameActions);
-
-            @Override
-            public void changed(ObservableValue<? extends Boolean> observable, Boolean oldValue, Boolean newValue) {
-                if (newValue) {
-                    updateRoot();
-                    leftPanel.getChildren().clear();
-                    rightPanel.getChildren().clear();
-                    listWrapper.getChildren().setAll(gameList);
-
-                    onFilterChanged = s -> updateRoot();
-                }
-            }
-
-            private void updateRoot() {
-                if (root == null) {
-                    root = loadTree(Path.of(cfg.getProperty("gameDir"), "Data"));
-                }
-                itemTreeItem = DiffUi.this.filterForObserve(root);
-                gameList.setRoot(itemTreeItem);
             }
         });
 
@@ -930,35 +913,16 @@ public class DiffUi extends Application {
             protected void updateItem(Item item, boolean empty) {
                 super.updateItem(item, empty);
                 if (!empty) {
-                    if (!item.local.isDirectory && !item.remote.isDirectory) {
-                        setOnMouseClicked(e -> {
-                            if (e.getClickCount() == 1 && e.isControlDown()) {
-                                try {
-                                    Runtime.getRuntime().exec("explorer /select, " + item.local);
-                                } catch (IOException ex) {
-                                    throw new RuntimeException(ex);
-                                }
-                                e.consume();
+                    setOnMouseClicked(e -> {
+                        if (e.getClickCount() == 2 && e.isControlDown()) {
+                            try {
+                                Runtime.getRuntime().exec("explorer /select, " + item.local);
+                            } catch (IOException ex) {
+                                throw new RuntimeException(ex);
                             }
-                        });
-                    } else {
-                        String itemName = item.local.name.toLowerCase();
-                        if (itemName.startsWith("[") && itemName.endsWith("]")) {
-                            setOnMouseClicked(e -> {
-                                if (e.getClickCount() == 1 && e.isControlDown()) {
-                                    try {
-                                        Runtime.getRuntime().exec("explorer /select, " + item.local);
-                                    } catch (IOException ex) {
-                                        throw new RuntimeException(ex);
-                                    }
-                                    e.consume();
-                                } else if (e.getClickCount() == 2) {
-                                    //packDef(item);
-                                    e.consume();
-                                }
-                            });
+                            e.consume();
                         }
-                    }
+                    });
                 }
             }
         });
@@ -1393,23 +1357,59 @@ public class DiffUi extends Application {
         return filter == null ? new TreeItem<>(rootItem.getValue()) : filter;
     }
 
-    private TreeItem<Item> filterForInProgress() {
-        Predicate<TreeItem<Item>> preFilter = item -> true;
-        Function<TreeItem<Item>, TreeItem<Item>> fold = item -> {
-            if (item.getChildren().isEmpty()) {
-                if (!item.getValue().local.name.startsWith("[")
-                        || !item.getValue().local.name.endsWith("]")
-                        || item.getValue().local.isFile
-                        || item.getValue().remote.isFile
-                ) {
-                    return null;
+    private TreeItem<Item> filterForInProgress(Path restore) {
+        FileInfo rootFile = new FileInfo(restore, "Root", null, null, true, false);
+        Item rootItem = new Item(rootFile, rootFile, true);
+        TreeItem<Item> root = new TreeItem<>(rootItem);
+        try (Stream<Path> sessions = Files.list(restore)) {
+            sessions.forEach(path -> {
+                try {
+                    if (Files.isDirectory(path)) {
+                        FileInfo sessionFile = new FileInfo(path, path.getFileName().toString(), Files.getLastModifiedTime(path), null, true, false);
+                        TreeItem<Item> sessionTree = new TreeItem<>(new Item(sessionFile, sessionFile, false));
+                        root.getChildren().add(sessionTree);
+                        Set<Path> files = new HashSet<>();
+                        try (Stream<Path> edits = Files.list(path)) {
+                            edits.forEach(edit -> {
+                                try {
+                                    String name = edit.getFileName().toString();
+                                    String lowName = name.toLowerCase();
+                                    if (lowName.endsWith(".tmp")) {
+                                        Files.delete(edit);
+                                        return;
+                                    }
+                                    if (lowName.endsWith(".backup")) {
+                                        Path history = edit.resolveSibling(name.substring(0, name.length() - ".backup".length()));
+                                        if (Files.exists(history)) {
+                                            Files.delete(edit);
+                                            return;
+                                        }
+                                        Files.move(edit, history);
+                                        edit = history;
+                                    }
+                                    files.add(edit);
+                                } catch (IOException e) {
+                                    throw new RuntimeException(e);
+                                }
+                            });
+                        }
+                        List<Path> sortedFiles = new ArrayList<>(files);
+                        sortedFiles.sort(Comparator.<Path>naturalOrder().reversed());
+                        for (Path edit : sortedFiles) {
+                            FileInfo editFile = new FileInfo(edit, edit.getFileName().toString(), Files.getLastModifiedTime(edit), Files.size(edit), false, true);
+                            sessionTree.getChildren().add(new TreeItem<>(new Item(editFile, editFile)));
+                        }
+                    }
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
                 }
-            }
-            item.setExpanded(true);
-            return item;
-        };
-        TreeItem<Item> filter = filter(rootItem, preFilter, fold);
-        return filter == null ? new TreeItem<>(rootItem.getValue()) : filter;
+            });
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+        Comparator<TreeItem<Item>> comparator = Comparator.comparing(s -> s.getValue().local.path);
+        root.getChildren().sort(comparator.reversed());
+        return root;
     }
 
     private TreeItem<Item> filterForFetch() {
@@ -1507,8 +1507,8 @@ public class DiffUi extends Application {
         Set<Path> allPaths = loadAllPaths();
 
         TreeItem<Item> rootItem = new TreeItem<>(new Item(
-                new FileInfo(localPath, localPath.toString(), Files.getLastModifiedTime(localPath), null, true, false),
-                new FileInfo(remotePath, remotePath.toString(), Files.getLastModifiedTime(remotePath), null, true, false)
+                new FileInfo(localPath, "Local files", Files.getLastModifiedTime(localPath), null, true, false),
+                new FileInfo(remotePath, "Remote files", Files.getLastModifiedTime(remotePath), null, true, false)
         ));
 
         Map<Path, TreeItem<Item>> expandedTree = new HashMap<>();
@@ -1558,7 +1558,7 @@ public class DiffUi extends Application {
             String ignoreCommon = cfg.getProperty("ignore.common", "$^");
             Pattern ignoreLocal = Pattern.compile("(" + cfg.getProperty("ignore.local", "$^") + ")|(" + ignoreCommon + ")");
 
-            FileInfo info = new FileInfo(path, path.toString(), Files.getLastModifiedTime(path), null, true, false);
+            FileInfo info = new FileInfo(path, "Game", Files.getLastModifiedTime(path), null, true, false);
             TreeItem<Item> rootItem = new TreeItem<>(new Item(info, info));
             List<Path> allPaths;
             Map<Path, TreeItem<Item>> expandedTree = new HashMap<>();
@@ -1619,26 +1619,10 @@ public class DiffUi extends Application {
             w2.filter(p -> !ignoreRemote.matcher(p.toAbsolutePath().normalize().toString()).matches()).forEach(l -> remotePaths.add(remotePath.relativize(l)));
         }
 
-        scanLocal(localPaths, Pattern.compile("0w_.*"));
-
         Set<Path> allPaths = new TreeSet<>();
         allPaths.addAll(remotePaths);
         allPaths.addAll(localPaths);
         return allPaths;
-    }
-
-    private void scanLocal(List<Path> localPaths, Pattern skipFrames) {
-        if (true) {
-            return;
-        }
-        for (Path path : localPaths) {
-            String name = path.getFileName().toString().toLowerCase();
-            if (name.endsWith(".def")) {
-                //ImgFilesUtils.validateDefNames(localPath.resolve(path), skipFrames);
-            } else if (name.endsWith(".lod")) {
-
-            }
-        }
     }
 
     private void show(TreeItem<Item> treeItem) {
@@ -1709,12 +1693,6 @@ public class DiffUi extends Application {
                 applyToLeafs(child, consumer);
             }
         }
-    }
-
-    private Pane withLabel(Node pane, String label) {
-        Pane result = new VBox(new Label(label), pane);
-        result.setPadding(new Insets(4));
-        return result;
     }
 
     enum ItemStatus {

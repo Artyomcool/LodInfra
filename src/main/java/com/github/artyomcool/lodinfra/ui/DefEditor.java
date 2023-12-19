@@ -91,7 +91,7 @@ public class DefEditor extends StackPane {
             cell.setOnDragDone((e) -> clearDropLocation());
             return cell;
         });
-        view.setPrefHeight(100000);
+        view.setPrefHeight(2000);
         view.setPrefWidth(220);
         view.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
         return view;
@@ -401,8 +401,14 @@ public class DefEditor extends StackPane {
                     Files.createDirectories(currentRestore);
                 }
 
-                Path file = Files.createTempFile(currentRestore, "backup", ".history");
-                try (SeekableByteChannel backup = Files.newByteChannel(file, StandardOpenOption.WRITE)) {
+                String name = currentDef().path.getFileName().toString();
+                if (name.contains("=@=@=")) {
+                    name = name.substring(name.indexOf("=@=@=") + "=@=@=".length());
+                }
+                name = time + "-" + name;
+
+                Path fileTmp = Files.createTempFile(currentRestore, "", ".history.tmp");
+                try (SeekableByteChannel backup = Files.newByteChannel(fileTmp, StandardOpenOption.WRITE)) {
                     ByteBuffer buffer = ByteBuffer.allocateDirect(10 * 1024 * 1024);
 
                     Set<String> hash = new HashSet<>();
@@ -455,7 +461,15 @@ public class DefEditor extends StackPane {
 
                     backup.write(buffer.flip());
                 }
-                Files.move(file, currentRestore.resolve(time + ".history"), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+
+                Path history = currentRestore.resolve(name + ".history");
+                Path backup = currentRestore.resolve(name + ".history.backup");
+                if (Files.exists(history)) {
+                    Files.deleteIfExists(backup);
+                    Files.move(history, backup, StandardCopyOption.ATOMIC_MOVE);
+                }
+                Files.move(fileTmp, history);
+                Files.deleteIfExists(backup);
             } catch (Exception e) {
                 e.printStackTrace();
             }
@@ -505,17 +519,21 @@ public class DefEditor extends StackPane {
                 }
             }
         }
-        boolean battleColors = false;
-        int[] specColors = DefInfo.SPEC_COLORS;
-        for (int i = 0; i < specColors.length; i++) {
-            int specColor = specColors[i];
-            if (colors.remove(specColor)) {
-                if (i >= 6) {
-                    battleColors = true;
-                }
-            }
+
+        int specialColors = switch (DefInfo.compressionForType(def, defType.getValue().type)) {
+            case 0 -> 0;
+            case 1 -> 8;
+            case 2, 3 -> 6;
+            default -> throw showError("Unexpected value for: " + defType.getValue());
+        };
+
+        for (int i = 0; i < specialColors; i++) {
+            int specColor = DefInfo.SPEC_COLORS[i];
+            colors.remove(specColor);
         }
-        int colorsCount = colors.size() + (battleColors ? 8 : 6);
+
+
+        int colorsCount = colors.size() + specialColors;
         if (colorsCount > 256) {
             System.err.println("Wrong colors count: " + colorsCount);
             ButtonType compact = new ButtonType("Compact", ButtonBar.ButtonData.APPLY);
@@ -525,17 +543,26 @@ public class DefEditor extends StackPane {
             }
 
             Map<Integer, Integer> colorReplacements = new HashMap<>();
-            while (colors.size() + (battleColors ? 8 : 6) > 256) {
+            while (colors.size() + specialColors > 256) {
                 ArrayList<Integer> cc = new ArrayList<>(colors);
                 reducePaletteForOne(cc, colorReplacements);
                 colors = new HashSet<>(cc);
             }
 
-            for (Map.Entry<Integer, Integer> entry : colorReplacements.entrySet()) {
-                Integer replace = colorReplacements.get(entry.getValue());
-                while (replace != null) {
-                    entry.setValue(replace);
-                    replace = colorReplacements.get(entry.getValue());
+            List<Map.Entry<Integer, Integer>> replacements = new ArrayList<>(colorReplacements.entrySet());
+            Map<Integer, Map.Entry<Integer, Integer>> replacementsMap = new HashMap<>();
+            for (Map.Entry<Integer, Integer> replacement : replacements) {
+                replacementsMap.put(replacement.getKey(), replacement);
+            }
+
+            for (Map.Entry<Integer, Integer> replacement : replacements) {
+                Integer to = replacement.getValue();
+
+                Map.Entry<Integer, Integer> rep = replacementsMap.get(to);
+                while (rep != null) {
+                    to = rep.getValue();
+                    replacement.setValue(to);
+                    rep = replacementsMap.get(to);
                 }
             }
 
@@ -573,7 +600,7 @@ public class DefEditor extends StackPane {
                 }
             }
 
-            clone.palette = toPalette(colors, battleColors);
+            clone.palette = toPalette(colors, specialColors);
             setDefInternal(clone, selectedFrame);
             drawPalette(clone);
             autoscroll();
@@ -582,7 +609,7 @@ public class DefEditor extends StackPane {
             react = true;
             return;
         }
-        int[] palette = toPalette(colors, battleColors);
+        int[] palette = toPalette(colors, specialColors);
         update("Palette", palette, Function.identity());
     }
 
@@ -590,10 +617,10 @@ public class DefEditor extends StackPane {
         update("Drop palette", null, Function.identity());
     }
 
-    private static int[] toPalette(Set<Integer> colors, boolean battleColors) {
+    private static int[] toPalette(Set<Integer> colors, int specialColors) {
         int[] palette = new int[256];
         int i = 0;
-        for (; i < (battleColors ? 8 : 6); i++) {
+        for (; i < specialColors; i++) {
             palette[i] = DefInfo.SPEC_COLORS[i];
         }
         TreeSet<Integer> tree = new TreeSet<>((c1, c2) -> {
@@ -658,8 +685,12 @@ public class DefEditor extends StackPane {
             }
         }
         colors.add(gc);
-        colorReplacements.put(gc1, gc);
-        colorReplacements.put(gc2, gc);
+        if (gc1 != gc) {
+            colorReplacements.put(gc1, gc);
+        }
+        if (gc2 != gc) {
+            colorReplacements.put(gc2, gc);
+        }
     }
 
     public void start() {

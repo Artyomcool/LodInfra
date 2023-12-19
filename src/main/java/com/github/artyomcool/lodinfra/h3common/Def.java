@@ -5,9 +5,7 @@ import com.github.artyomcool.lodinfra.ui.Box;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.IntBuffer;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.*;
 
 public class Def extends DefInfo {
 
@@ -187,10 +185,13 @@ public class Def extends DefInfo {
     public static ByteBuffer pack(DefInfo def, Map<Frame, FrameInfo> links) {
         ByteBuffer buffer = ByteBuffer.allocate(100 * 1024 * 1024).order(ByteOrder.LITTLE_ENDIAN);
 
+        List<Group> groups = new ArrayList<>(def.groups);
+        groups.removeIf(g -> g.frames.isEmpty());
+
         int type = def.type;
         int fullWidth = def.fullWidth;
         int fullHeight = def.fullHeight;
-        int groupCount = def.groups.size();
+        int groupCount = groups.size();
         buffer
                 .putInt(type)
                 .putInt(fullWidth)
@@ -206,7 +207,7 @@ public class Def extends DefInfo {
 
         Map<Frame, Integer> offsetToPutOffset = new HashMap<>();
 
-        for (Group group : def.groups) {
+        for (Group group : groups) {
             int groupIndex = group.groupIndex;
             int framesCount = group.frames.size();
             int unk1 = 0;

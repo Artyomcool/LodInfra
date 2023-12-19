@@ -4,10 +4,7 @@ import com.jfoenix.controls.JFXButton;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
-import javafx.scene.control.Alert;
-import javafx.scene.control.Button;
-import javafx.scene.control.ButtonBase;
-import javafx.scene.control.Control;
+import javafx.scene.control.*;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
 
@@ -99,5 +96,11 @@ public class Ui {
     static <T extends Region> T height(int h, T node) {
         node.setPrefHeight(h);
         return node;
+    }
+
+    static Pane withLabel(Node pane, String label) {
+        Pane result = new VBox(new Label(label), pane);
+        result.setPadding(new Insets(4));
+        return result;
     }
 }
