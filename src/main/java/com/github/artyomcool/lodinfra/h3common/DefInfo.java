@@ -181,6 +181,14 @@ public class DefInfo {
         return null;
     }
 
+    public List<Frame> frames() {
+        List<Frame> result = new ArrayList<>();
+        for (Group group : groups) {
+            result.addAll(group.frames);
+        }
+        return result;
+    }
+
     public static class Group {
         public final DefInfo def;
         public int groupIndex;
@@ -302,6 +310,14 @@ public class DefInfo {
             DefInfo def = DefInfo.load(buffer.duplicate().order(ByteOrder.LITTLE_ENDIAN));
             if (def != null) {
                 def.path = path;
+                int i = 0;
+                for (Frame frame : def.frames()) {
+                    if (frame.name == null) {
+                        String name = path.getFileName().toString();
+                        name = name.substring(0, name.indexOf('.'));
+                        frame.name = name + "_" + i++;
+                    }
+                }
             }
             return def;
         });

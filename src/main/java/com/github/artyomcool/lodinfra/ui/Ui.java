@@ -1,12 +1,17 @@
 package com.github.artyomcool.lodinfra.ui;
 
 import com.jfoenix.controls.JFXButton;
+import javafx.event.ActionEvent;
+import javafx.event.EventHandler;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
+
+import java.util.concurrent.Callable;
+import java.util.function.Consumer;
 
 public class Ui {
     static RuntimeException showError(String error) {
@@ -15,6 +20,19 @@ public class Ui {
         alert.setContentText(error);
         alert.showAndWait();
         return new RuntimeException(error);
+    }
+
+    static MenuItem menuItem(String title, Action action) {
+        MenuItem menuItem = new MenuItem(title);
+        menuItem.setOnAction(actionEvent -> {
+            try {
+                action.run();
+            } catch (Exception e) {
+                e.printStackTrace();
+                showError("Unexpected error: " + e.getMessage());
+            }
+        });
+        return menuItem;
     }
 
     static Pane groupButtons(Control... nodes) {
@@ -103,4 +121,9 @@ public class Ui {
         result.setPadding(new Insets(4));
         return result;
     }
+
+    public static interface Action {
+        void run() throws Exception;
+    }
+
 }

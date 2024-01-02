@@ -1,7 +1,9 @@
 package com.github.artyomcool.lodinfra.ui;
 
 import com.github.artyomcool.lodinfra.Utils;
+import com.github.artyomcool.lodinfra.h3common.DefInfo;
 import com.github.artyomcool.lodinfra.h3common.LodFile;
+import com.github.artyomcool.lodinfra.h3common.Png;
 import com.jfoenix.controls.JFXCheckBox;
 import com.jfoenix.controls.JFXTreeTableView;
 import com.jfoenix.controls.datamodels.treetable.RecursiveTreeObject;
@@ -25,11 +27,13 @@ import javafx.scene.paint.Color;
 import javafx.scene.shape.SVGPath;
 import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
+import javafx.stage.DirectoryChooser;
 import javafx.stage.Stage;
 import javafx.util.Callback;
 import org.controlsfx.control.SegmentedButton;
 
 import java.io.*;
+import java.nio.ByteBuffer;
 import java.nio.file.*;
 import java.nio.file.attribute.FileTime;
 import java.text.SimpleDateFormat;
@@ -53,7 +57,6 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static com.github.artyomcool.lodinfra.ui.Ui.*;
-import static javafx.scene.control.TreeTableView.CONSTRAINED_RESIZE_POLICY;
 import static javafx.scene.control.TreeTableView.UNCONSTRAINED_RESIZE_POLICY;
 
 public class DiffUi extends Application {
@@ -83,6 +86,7 @@ public class DiffUi extends Application {
     private CheckBox searchRegex;
     private CheckBox searchCase;
     private Pattern searchPattern;
+    private Scene scene;
 
     public DiffUi(Path localPath, Path remotePath, Properties cfg, Path logs, String nick) {
         //localPath = remotePath = Path.of("C:\\Users\\Raider\\Desktop\\shared\\HotA\\Data\\");
@@ -197,7 +201,7 @@ public class DiffUi extends Application {
             box.setDividerPosition(0, 0.6);
             root.getChildren().add(box);
 
-            Scene scene = new Scene(root);
+            scene = new Scene(root);
             scene.getStylesheets().add(getClass().getResource("/theme.css").toExternalForm());
 
             primaryStage.setWidth(1200);
@@ -276,6 +280,49 @@ public class DiffUi extends Application {
         }
         for (TreeItem<Item> child : treeItem.getChildren()) {
             markWithChildren(actions, child, action);
+        }
+    }
+
+    private void export(TreeItem<Item> item) throws IOException {
+        DirectoryChooser directoryChooser = new DirectoryChooser();
+        directoryChooser.setTitle("Path for export");
+        File file = directoryChooser.showDialog(scene.getWindow());
+        if (file != null) {
+            export(item, file.toPath());
+        }
+    }
+
+    private void export(TreeItem<Item> item, Path output) throws IOException {
+        if (item.isLeaf()) {
+            if (item.getValue().remote.isFile) {
+                DefInfo defInfo = DefInfo.load(item.getValue().remote.path);
+                if (defInfo != null) {
+                    List<DefInfo.Frame> frames = defInfo.frames();
+                    for (DefInfo.Frame frame : frames) {
+                        String str = defInfo.path.getFileName().toString();
+                        int lod = str.indexOf("=@=@=");
+                        if (lod != -1) {
+                            str = str.substring(lod + "=@=@=".length());
+                        }
+                        int ext = str.indexOf('.');
+                        if (ext != -1) {
+                            str = str.substring(0, ext);
+                        }
+                        Path path = output.resolve(str + "_" + frame.name + ".png");
+                        ByteBuffer pack = Png.pack(frame, true, true);
+                        if (pack == null) {
+                            return;
+                        }
+                        byte[] tmp = new byte[pack.remaining()];
+                        pack.get(tmp);
+                        Files.write(path, tmp);
+                    }
+                }
+            }
+        } else {
+            for (TreeItem<Item> child : item.getChildren()) {
+                export(child, output);
+            }
         }
     }
 
@@ -866,6 +913,12 @@ public class DiffUi extends Application {
         sizeB.setCellFactory(sizeA.getCellFactory());
 
         list.setRowFactory(r -> new TreeTableRow<>() {
+            final ContextMenu contextMenu = new ContextMenu();
+            final MenuItem export = menuItem("Export", () -> export(getTreeItem()));
+            {
+                setContextMenu(contextMenu);
+            }
+
             {
                 MenuItem validate = new MenuItem("Validate");
                 Pattern skipFrames = Pattern.compile("0w_.*");
@@ -909,13 +962,15 @@ public class DiffUi extends Application {
                         //ImgFilesUtils.fixP32Colors(item.local.path);
                     }
                 }));
-                setContextMenu(new ContextMenu(validate, fixDefNaming, fixColors));
+
+                //setContextMenu(new ContextMenu(validate, fixDefNaming, fixColors));
             }
 
             @Override
             protected void updateItem(Item item, boolean empty) {
                 super.updateItem(item, empty);
                 if (!empty) {
+                    contextMenu.getItems().clear();
                     setOnMouseClicked(e -> {
                         if (e.getClickCount() == 2 && e.isControlDown()) {
                             try {
@@ -926,6 +981,9 @@ public class DiffUi extends Application {
                             e.consume();
                         }
                     });
+                    if (item.remote.lastModified != null) {
+                        contextMenu.getItems().add(export);
+                    }
                 }
             }
         });

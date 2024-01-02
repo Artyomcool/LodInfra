@@ -59,14 +59,17 @@ public class Png extends DefInfo {
         return def;
     }
 
-    // TODO verify palette
     public static ByteBuffer pack(Frame frame) {
+        return pack(frame, false, false);
+    }
+    // TODO verify palette
+    public static ByteBuffer pack(Frame frame, boolean ignorePalette, boolean alphaForSpecColors) {
         DefInfo def = frame.group.def;
         ByteArrayOutputStream out = new ByteArrayOutputStream();
-        boolean alpha = def.type == D32.TYPE || def.type == P32.TYPE;
-        ImageInfo header = new ImageInfo(frame.fullWidth, frame.fullHeight, 8, alpha, false, def.palette != null);
+        boolean alpha = ignorePalette || def.type == D32.TYPE || def.type == P32.TYPE;
+        ImageInfo header = new ImageInfo(frame.fullWidth, frame.fullHeight, 8, alpha, false, !ignorePalette && def.palette != null);
         PngWriter pngWriter = new PngWriter(out, header);
-        if (def.palette != null) {
+        if (!ignorePalette && def.palette != null) {
             Map<Integer, Byte> paletteMap = new HashMap<>();
             PngChunkPLTE chunk = new PngChunkPLTE(header);
             chunk.setNentries(def.palette.length);
@@ -77,21 +80,37 @@ public class Png extends DefInfo {
             }
             pngWriter.queueChunk(chunk);
 
+            ImageLineByte line = new ImageLineByte(header);
             for (int y = 0; y < frame.fullHeight; y++) {
-                ImageLineByte line = new ImageLineByte(header);
                 for (int x = 0; x < frame.fullWidth; x++) {
                     int color = frame.color(x, y);
-                    line.getScanline()[x] = paletteMap.get(color);
+                    Byte b = paletteMap.get(color);
+                    if (b == null) {
+                        System.err.println("Wrong palette: " + def.path + ":" + frame.name);
+                        return null;
+                    }
+                    line.getScanline()[x] = b;
                 }
                 pngWriter.writeRow(line);
             }
         } else {
+            ImageLineByte line = new ImageLineByte(header);
             for (int y = 0; y < frame.fullHeight; y++) {
-                //ImageLineByte line = new ImageLineByte(header);
-                ImageLineInt line = new ImageLineInt(header);
+                //ImageLineInt line = new ImageLineInt(header);
                 for (int x = 0; x < frame.fullWidth; x++) {
                     int color = frame.color(x, y);
-                    line.getScanline()[x] = color;
+                    if (alphaForSpecColors) {
+                        for (int specColor : DefInfo.SPEC_COLORS) {
+                            if (specColor == color) {
+                                color = 0;
+                                break;
+                            }
+                        }
+                    }
+                    line.getScanline()[x * 4 + 0] = (byte) (color >>> 16 & 0xff);
+                    line.getScanline()[x * 4 + 1] = (byte) (color >>> 8 & 0xff);
+                    line.getScanline()[x * 4 + 2] = (byte) (color >>> 0 & 0xff);
+                    line.getScanline()[x * 4 + 3] = (byte) (color >>> 24 & 0xff);
                 }
                 pngWriter.writeRow(line);
             }

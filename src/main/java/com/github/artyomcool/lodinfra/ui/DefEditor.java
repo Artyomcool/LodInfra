@@ -532,8 +532,9 @@ public class DefEditor extends StackPane {
             colors.remove(specColor);
         }
 
+        int reserved = defType.getValue().type == DefType.DefCombatCreature.type ? 10 : specialColors;
 
-        int colorsCount = colors.size() + specialColors;
+        int colorsCount = colors.size() + reserved;
         if (colorsCount > 256) {
             System.err.println("Wrong colors count: " + colorsCount);
             ButtonType compact = new ButtonType("Compact", ButtonBar.ButtonData.APPLY);
@@ -543,7 +544,7 @@ public class DefEditor extends StackPane {
             }
 
             Map<Integer, Integer> colorReplacements = new HashMap<>();
-            while (colors.size() + specialColors > 256) {
+            while (colors.size() + reserved > 256) {
                 ArrayList<Integer> cc = new ArrayList<>(colors);
                 reducePaletteForOne(cc, colorReplacements);
                 colors = new HashSet<>(cc);
@@ -600,7 +601,7 @@ public class DefEditor extends StackPane {
                 }
             }
 
-            clone.palette = toPalette(colors, specialColors);
+            clone.palette = toPalette(colors, specialColors, reserved);
             setDefInternal(clone, selectedFrame);
             drawPalette(clone);
             autoscroll();
@@ -609,7 +610,7 @@ public class DefEditor extends StackPane {
             react = true;
             return;
         }
-        int[] palette = toPalette(colors, specialColors);
+        int[] palette = toPalette(colors, specialColors, reserved);
         update("Palette", palette, Function.identity());
     }
 
@@ -617,11 +618,14 @@ public class DefEditor extends StackPane {
         update("Drop palette", null, Function.identity());
     }
 
-    private static int[] toPalette(Set<Integer> colors, int specialColors) {
+    private static int[] toPalette(Set<Integer> colors, int specialColors, int reserved) {
         int[] palette = new int[256];
         int i = 0;
         for (; i < specialColors; i++) {
             palette[i] = DefInfo.SPEC_COLORS[i];
+        }
+        for (; i < reserved; i++) {
+            palette[i] = 0xff000000;
         }
         TreeSet<Integer> tree = new TreeSet<>((c1, c2) -> {
             int r1 = c1 >>> 16 & 0xff;
