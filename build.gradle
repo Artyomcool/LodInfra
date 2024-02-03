@@ -111,7 +111,7 @@ application {
 jlink {
     options = ['--compress=2', '--no-header-files', '--no-man-pages', '--include-locales=en,ru']
 
-    javaHome = "C:\\Users\\Raider\\.jdks\\corretto-17.0.9"
+    //javaHome = "C:\\Users\\Raider\\.jdks\\corretto-17.0.9"
 
     launcher {
         name = 'pack'

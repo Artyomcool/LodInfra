@@ -29,7 +29,7 @@ dependencies {
 jlink {
     options = ['--strip-debug', '--compress=2', '--no-header-files', '--no-man-pages', '--vm', 'client']
 
-    javaHome = "C:\\Program Files (x86)\\Eclipse Adoptium\\jdk-17.0.9.9-hotspot"
+    //javaHome = "C:\\Program Files (x86)\\Eclipse Adoptium\\jdk-17.0.9.9-hotspot"
 
     launcher {
         name = 'wrapper32'
