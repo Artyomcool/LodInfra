@@ -34,7 +34,7 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
       - name: Create a package
-        run: ./gradlew :LodInfra:jlinkZip
+        run: ./gradlew :jlinkZip
       - name: Set up JDK 17 x86
         uses: actions/setup-java@v3
         with:
