@@ -1,5 +1,6 @@
 package com.github.artyomcool.lodinfra;
 
+import com.github.artyomcool.lodinfra.h3common.Archive;
 import com.github.artyomcool.lodinfra.h3common.LodFile;
 
 import java.io.IOException;
@@ -16,7 +17,7 @@ public class LodFilePatch {
     private static final int HEADER_SIZE = getLodHeaderSize();
     private static final int SUB_FILE_HEADER_SIZE = getLodMetaHeaderSize();
 
-    private final LodFile file;
+    private final Archive file;
     private final Map<String, Resource> originalResourcesByName = new TreeMap<>();
     private final Set<String> removedByName = new TreeSet<>();
     private final Map<String, Resource> patchesByName = new TreeMap<>();
@@ -27,11 +28,11 @@ public class LodFilePatch {
         return new LodFilePatch(path, LodFile.loadOrCreate(path), preprocessor);
     }
 
-    private LodFilePatch(Path lodPath, LodFile file, ResourcePreprocessor preprocessor) {
+    private LodFilePatch(Path lodPath, Archive file, ResourcePreprocessor preprocessor) {
         this.file = file;
         this.preprocessor = preprocessor;
-        for (LodFile.SubFileMeta subFile : file.subFiles) {
-            Resource resource = Resource.fromLod(lodPath, file, subFile);
+        for (Archive.Element subFile : file.files()) {
+            Resource resource = Resource.fromLod(lodPath, subFile);
             originalResourcesByName.put(resource.sanitizedName, resource);
         }
     }
@@ -196,15 +197,11 @@ public class LodFilePatch {
         int subFilesCount = resources.size();
 
         ByteBuffer byteBuffer = ByteBuffer.wrap(result).order(ByteOrder.LITTLE_ENDIAN);
-        byteBuffer.putInt(file.magic);
-        byteBuffer.putInt(file.fileUseFlag);
-        byteBuffer.putInt(subFilesCount);
-        byteBuffer.put(file.junk);
+        file.writeHeader(byteBuffer, subFilesCount);
 
         int offset = headersSize;
 
         for (Resource resource : resources) {
-
             int compressedSize = resource.uncompressedSize == 0
                     ? 0
                     : resource.data.remaining();

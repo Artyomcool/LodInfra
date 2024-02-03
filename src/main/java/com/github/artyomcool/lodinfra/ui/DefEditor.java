@@ -1,6 +1,7 @@
 package com.github.artyomcool.lodinfra.ui;
 
 import com.github.artyomcool.lodinfra.Pack;
+import com.github.artyomcool.lodinfra.Resource;
 import com.github.artyomcool.lodinfra.Utils;
 import com.github.artyomcool.lodinfra.h3common.*;
 import com.jfoenix.controls.*;
@@ -401,10 +402,7 @@ public class DefEditor extends StackPane {
                     Files.createDirectories(currentRestore);
                 }
 
-                String name = currentDef().path.getFileName().toString();
-                if (name.contains("=@=@=")) {
-                    name = name.substring(name.indexOf("=@=@=") + "=@=@=".length());
-                }
+                String name = Resource.fileNamePossibleInLod(currentDef().path);
                 name = time + "-" + name;
 
                 Path fileTmp = Files.createTempFile(currentRestore, "", ".history.tmp");

@@ -1,5 +1,6 @@
 package com.github.artyomcool.lodinfra;
 
+import com.github.artyomcool.lodinfra.h3common.Archive;
 import com.github.artyomcool.lodinfra.h3common.Def;
 import com.github.artyomcool.lodinfra.h3common.DefInfo;
 import com.github.artyomcool.lodinfra.h3common.LodFile;
@@ -269,9 +270,9 @@ public class Pack {
                     continue;
                 }
 
-                LodFile lodFile = LodFile.load(path);
-                for (LodFile.SubFileMeta subFile : lodFile.subFiles) {
-                    String name = subFile.nameAsString;
+                Archive lodFile = LodFile.load(path);
+                for (Archive.Element subFile : lodFile.files()) {
+                    String name = subFile.name();
                     Path toStore = self.resolve(Path.of(lang + "@" + lod, name));
                     if (Boolean.parseBoolean(dryRun)) {
                         continue;

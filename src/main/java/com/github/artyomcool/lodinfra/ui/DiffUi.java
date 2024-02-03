@@ -1,9 +1,12 @@
 package com.github.artyomcool.lodinfra.ui;
 
+import com.github.artyomcool.lodinfra.Resource;
 import com.github.artyomcool.lodinfra.Utils;
+import com.github.artyomcool.lodinfra.h3common.Archive;
 import com.github.artyomcool.lodinfra.h3common.DefInfo;
 import com.github.artyomcool.lodinfra.h3common.LodFile;
 import com.github.artyomcool.lodinfra.h3common.Png;
+
 import com.jfoenix.controls.JFXCheckBox;
 import com.jfoenix.controls.JFXTreeTableView;
 import com.jfoenix.controls.datamodels.treetable.RecursiveTreeObject;
@@ -34,6 +37,8 @@ import org.controlsfx.control.SegmentedButton;
 
 import java.io.*;
 import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.nio.channels.FileChannel;
 import java.nio.file.*;
 import java.nio.file.attribute.FileTime;
 import java.text.SimpleDateFormat;
@@ -79,7 +84,7 @@ public class DiffUi extends Application {
     private Consumer<String> onFilterChanged = s -> {};
 
     private Stage primaryStage;
-    private DefCompareView preview;
+    private ResourceCompareView preview;
     private TreeItem<Item> rootItem;
     private WatchService watchService;
     private TextField search;
@@ -89,7 +94,6 @@ public class DiffUi extends Application {
     private Scene scene;
 
     public DiffUi(Path localPath, Path remotePath, Properties cfg, Path logs, String nick) {
-        //localPath = remotePath = Path.of("C:\\Users\\Raider\\Desktop\\shared\\HotA\\Data\\");
         this.localPath = localPath.toAbsolutePath();
         this.remotePath = remotePath.toAbsolutePath();
         this.logs = logs;
@@ -191,7 +195,7 @@ public class DiffUi extends Application {
             StackPane root = new StackPane();
 
             VBox lastFiles = files(root);
-            preview = new DefCompareView(localPath.resolve("restore"));
+            preview = new ResourceCompareView(cfg, localPath.resolve("restore"));
             preview.setPadding(new Insets(4, 4, 2, 4));
             preview.start();
             ScrollPane pane = new ScrollPane(preview);
@@ -294,16 +298,19 @@ public class DiffUi extends Application {
 
     private void export(TreeItem<Item> item, Path output) throws IOException {
         if (item.isLeaf()) {
-            if (item.getValue().remote.isFile) {
-                DefInfo defInfo = DefInfo.load(item.getValue().remote.path);
+            if (item.getValue().local.isFile) {
+                Path lod = Resource.pathOfLod(item.getValue().local.path);
+                if (lod != null) {
+                    if (lod.getFileName().toString().toLowerCase().endsWith(".snd")) {
+                        exportSnd(item.getValue().local.path, output);
+                        return;
+                    }
+                }
+                DefInfo defInfo = DefInfo.load(item.getValue().local.path);
                 if (defInfo != null) {
                     List<DefInfo.Frame> frames = defInfo.frames();
                     for (DefInfo.Frame frame : frames) {
-                        String str = defInfo.path.getFileName().toString();
-                        int lod = str.indexOf("=@=@=");
-                        if (lod != -1) {
-                            str = str.substring(lod + "=@=@=".length());
-                        }
+                        String str = Resource.fileNamePossibleInLod(defInfo.path);
                         int ext = str.indexOf('.');
                         if (ext != -1) {
                             str = str.substring(0, ext);
@@ -324,6 +331,17 @@ public class DiffUi extends Application {
                 export(child, output);
             }
         }
+    }
+
+    private void exportSnd(Path path, Path output) {
+        ImgFilesUtils.processFile(path, null, buffer -> {
+            try (FileOutputStream stream = new FileOutputStream(output.resolve(Resource.fileNamePossibleInLod(path) + ".wav").toFile())) {
+                try (FileChannel fc = stream.getChannel()) {
+                    fc.write(buffer);
+                }
+            }
+            return null;
+        });
     }
 
     private VBox files(StackPane root) throws IOException {
@@ -721,6 +739,11 @@ public class DiffUi extends Application {
                 sizeB
         );
 
+        timeA.setPrefWidth(5);
+        timeB.setPrefWidth(5);
+        sizeA.setPrefWidth(5);
+        sizeB.setPrefWidth(5);
+
         Font regular = Font.font("monospace", 12);
         Font bold = Font.font("monospace", FontWeight.BOLD, 12);
 
@@ -932,18 +955,6 @@ public class DiffUi extends Application {
                         //ImgFilesUtils.validateD32Colors(item.local.path);
                     } else if (name.endsWith(".p32")) {
                         //ImgFilesUtils.validateP32Colors(item.local.path);
-                    } else if (name.endsWith(".lod")) {
-                        try {
-                            LodFile lod = LodFile.load(item.local.path);
-                            for (LodFile.SubFileMeta subFile : lod.subFiles) {
-                                if (subFile.nameAsString.toLowerCase().endsWith(".def")) {
-                                    Path path = item.local.path.resolveSibling(item.local.path.getFileName() + "=@=@=" + subFile.nameAsString);
-                                    //ImgFilesUtils.validateDefSpecColors(path);
-                                }
-                            }
-                        } catch (IOException e) {
-                            throw new RuntimeException(e);
-                        }
                     }
                 }));
                 MenuItem fixDefNaming = new MenuItem("Fix def naming");
@@ -1361,14 +1372,14 @@ public class DiffUi extends Application {
 
     private void expandLod(TreeItem<Item> treeItem) {
         TreeSet<String> allResources = new TreeSet<>();
-        Map<String, LodFile.SubFileMeta> localMapping = new HashMap<>();
+        Map<String, Archive.Element> localMapping = new HashMap<>();
         FileInfo local = treeItem.getValue().local;
 
         try {
             if (local.isFile) {
-                LodFile lod = LodFile.load(local.path);
-                for (LodFile.SubFileMeta subFile : lod.subFiles) {
-                    String name = subFile.nameAsString.toLowerCase();
+                Archive lod = LodFile.load(local.path);
+                for (Archive.Element subFile : lod.files()) {
+                    String name = subFile.name().toLowerCase();
                     allResources.add(name);
                     localMapping.put(name, subFile);
                 }
@@ -1376,14 +1387,14 @@ public class DiffUi extends Application {
 
             List<TreeItem<Item>> items = new ArrayList<>();
             for (String res : allResources) {
-                LodFile.SubFileMeta localMeta = localMapping.get(res);
-                String localName = localMeta.nameAsString;
+                Archive.Element localMeta = localMapping.get(res);
+                String localName = localMeta.name();
 
                 FileInfo localFile = new FileInfo(
-                        local.path.resolveSibling(local.path.getFileName() + "=@=@=" + localName),
+                        Resource.pathInLod(local.path, localName),
                         localName,
                         local.lastModified,
-                        (long) localMeta.uncompressedSize,
+                        (long) localMeta.uncompressedSize(),
                         false,
                         true
                 );
@@ -1678,7 +1689,7 @@ public class DiffUi extends Application {
 
                 if (localExists && !localIsDirectory) {
                     String itemName = p.getFileName().toString().toLowerCase();
-                    if (itemName.endsWith(".lod")) {
+                    if (itemName.endsWith(".lod") || itemName.endsWith(".snd")) {
                         expandLod(item);
                     }
                 }
@@ -1714,7 +1725,7 @@ public class DiffUi extends Application {
         if (treeItem == null) {
             return;
         }
-        preview.setImages(treeItem.getValue().local.path, treeItem.getValue().remote.path);
+        preview.show(treeItem.getValue().local.path, treeItem.getValue().remote.path);
 
         DefCompareView[] node = new DefCompareView[1];
 

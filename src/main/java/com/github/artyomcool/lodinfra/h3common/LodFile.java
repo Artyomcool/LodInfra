@@ -10,11 +10,11 @@ import java.util.List;
 import java.util.zip.DataFormatException;
 import java.util.zip.Inflater;
 
-public class LodFile {
+public class LodFile implements Archive {
 
     public static final int MAGIC = 0x00444f4c;   // LOD\0 in little endian
 
-    public static class SubFileMeta {
+    public static class SubFileMeta implements Element {
         public LodFile parent;
         public String nameAsString;
         public byte[] name = new byte[16];
@@ -24,13 +24,14 @@ public class LodFile {
         public int compressedSize;
 
         public ByteBuffer asByteBuffer() {
+            ByteBuffer buffer = asOriginalByteBuffer();
             if (compressedSize == 0) {
-                return parent.originalData.slice(globalOffsetInFile, uncompressedSize).asReadOnlyBuffer().order(ByteOrder.LITTLE_ENDIAN);
+                return buffer;
             }
 
             byte[] uncompressed = new byte[uncompressedSize];
             Inflater inflater = new Inflater();
-            inflater.setInput(parent.originalData.slice(globalOffsetInFile, compressedSize));
+            inflater.setInput(buffer);
             try {
                 inflater.inflate(uncompressed);
             } catch (DataFormatException e) {
@@ -41,21 +42,36 @@ public class LodFile {
             return ByteBuffer.wrap(uncompressed).asReadOnlyBuffer().order(ByteOrder.LITTLE_ENDIAN);
         }
 
-        public byte[] asBytes() throws DataFormatException {
-            byte[] uncompressed = new byte[uncompressedSize];
+        public ByteBuffer asOriginalByteBuffer() {
+            return parent.originalData
+                    .slice(globalOffsetInFile, compressedSize == 0 ? uncompressedSize : compressedSize)
+                    .asReadOnlyBuffer()
+                    .order(ByteOrder.LITTLE_ENDIAN);
+        }
 
-            if (compressedSize == 0) {
-                ByteBuffer slice = parent.originalData.slice(globalOffsetInFile, uncompressedSize);
-                slice.get(uncompressed);
-                return uncompressed;
-            }
+        @Override
+        public Archive parent() {
+            return parent;
+        }
 
-            Inflater inflater = new Inflater();
-            inflater.setInput(parent.originalData.slice(globalOffsetInFile, compressedSize));
-            inflater.inflate(uncompressed);
-            inflater.end();
+        @Override
+        public String name() {
+            return nameAsString;
+        }
 
-            return uncompressed;
+        @Override
+        public int fileType() {
+            return fileType;
+        }
+
+        @Override
+        public int compressedSize() {
+            return compressedSize;
+        }
+
+        @Override
+        public int uncompressedSize() {
+            return uncompressedSize;
         }
     }
 
@@ -68,6 +84,24 @@ public class LodFile {
     public byte[] junk = new byte[80];
     public List<SubFileMeta> subFiles;
 
+    @Override
+    public Path originalPath() {
+        return path;
+    }
+
+    @Override
+    public List<SubFileMeta> files() {
+        return subFiles;
+    }
+
+    @Override
+    public void writeHeader(ByteBuffer byteBuffer, int subFilesCount) {
+        byteBuffer.putInt(magic);
+        byteBuffer.putInt(fileUseFlag);
+        byteBuffer.putInt(subFilesCount);
+        byteBuffer.put(junk);
+    }
+
     public static LodFile createEmpty(Path path) {
         LodFile file = new LodFile();
         file.path = path;
@@ -78,15 +112,18 @@ public class LodFile {
         return file;
     }
 
-    public static LodFile load(Path file) throws IOException {
+    public static Archive load(Path file) throws IOException {
         return parse(file, ByteBuffer.wrap(Files.readAllBytes(file)).order(ByteOrder.LITTLE_ENDIAN));
     }
 
-    public static LodFile loadOrCreate(Path lodPath) throws IOException {
+    public static Archive loadOrCreate(Path lodPath) throws IOException {
         return Files.exists(lodPath) ? load(lodPath) : createEmpty(lodPath);
     }
 
-    public static LodFile parse(Path lodPath, ByteBuffer byteBuffer) throws IOException {
+    public static Archive parse(Path lodPath, ByteBuffer byteBuffer) throws IOException {
+        if (lodPath.getFileName().toString().toLowerCase().endsWith(".snd")) {
+            return SndFile.parse(lodPath, byteBuffer);
+        }
         if (!byteBuffer.hasRemaining()) {
             return createEmpty(lodPath);
         }
@@ -120,17 +157,6 @@ public class LodFile {
         return result;
     }
 
-    public static SubFileMeta findFirst(List<LodFile> files, String name) {
-        for (LodFile file : files) {
-            for (SubFileMeta subFile : file.subFiles) {
-                if (subFile.nameAsString.equalsIgnoreCase(name)) {
-                    return subFile;
-                }
-            }
-        }
-        return null;
-    }
-
     private static int indexOfZero(byte[] name) {
         for (int i = 0; i < name.length; i++) {
             if (name[i] == 0) {
@@ -138,6 +164,10 @@ public class LodFile {
             }
         }
         return name.length;
+    }
+
+    public static String nameFromBytes(byte[] name) {
+        return new String(name, 0, indexOfZero(name));
     }
 
 }

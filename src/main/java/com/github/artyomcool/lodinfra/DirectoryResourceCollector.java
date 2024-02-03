@@ -40,7 +40,7 @@ public class DirectoryResourceCollector {
         Map<String, List<Path>> xlsFilesByLodName = new HashMap<>();
         Map<String, List<Path>> resourcesByLangLodName = new HashMap<>();
 
-        List<Path> files = Files.list(dir.resolve(resPath)).collect(Collectors.toList());
+        List<Path> files = Files.list(dir.resolve(resPath)).toList();
         for (Path path : files) {
             String name = path.getFileName().toString();
             if (Files.isDirectory(path)) {
@@ -218,10 +218,12 @@ public class DirectoryResourceCollector {
                 Path lodPath = entry.getKey();
 
                 String suffix = entry.getValue().lodName + "^";
-                String ceilingRemovedResource = removed.ceiling(suffix);
-                if (ceilingRemovedResource == null || !ceilingRemovedResource.startsWith(suffix)) {
-                    if (entry.getValue().resourcesByName.isEmpty()) {
-                        continue;
+                if (previouslyModifiedAt != null) {
+                    String ceilingRemovedResource = removed.ceiling(suffix);
+                    if (ceilingRemovedResource == null || !ceilingRemovedResource.startsWith(suffix)) {
+                        if (entry.getValue().resourcesByName.isEmpty()) {
+                            continue;
+                        }
                     }
                 }
 

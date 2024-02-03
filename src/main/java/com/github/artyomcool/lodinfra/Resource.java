@@ -1,6 +1,6 @@
 package com.github.artyomcool.lodinfra;
 
-import com.github.artyomcool.lodinfra.h3common.LodFile;
+import com.github.artyomcool.lodinfra.h3common.Archive;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -77,56 +77,69 @@ public class Resource {
         );
     }
 
-    public static Resource fromLod(Path holderPath, LodFile file, LodFile.SubFileMeta meta) {
-        String name = meta.nameAsString;
+    public static Resource fromLod(Path holderPath, Archive.Element meta) {
+        String name = meta.name();
         return new Resource(
-                meta.fileType,
+                meta.fileType(),
                 null,
                 name,
                 sanitizeName(name),
                 holderPath + ":" + name,
-                file.originalData.slice(
-                        meta.globalOffsetInFile,
-                        meta.compressedSize == 0 ? meta.uncompressedSize : meta.compressedSize
-                ),
-                meta.compressedSize == 0 ? 0 : meta.uncompressedSize
+                meta.asOriginalByteBuffer(),
+                meta.compressedSize() == 0 ? 0 : meta.uncompressedSize()
         );
     }
 
 
     private static int typeOf(String ext, ByteBuffer data) {
         ByteBuffer buf;
-        switch (ext.toLowerCase()) {
-            case "h3c":
-            case "xmi":
-            case "ifr":
-            case "p32":
-            case "d32":
-                return 1;
-            case "txt":
-                return 2;
-            case "fnt":
-                return 80;
-            case "msk":
-                return 79;
-            case "pal":
-                return 96;
-            case "pcx":
+        return switch (ext.toLowerCase()) {
+            case "h3c", "xmi", "ifr", "p32", "d32" -> 1;
+            case "txt" -> 2;
+            case "fnt" -> 80;
+            case "msk" -> 79;
+            case "pal" -> 96;
+            case "pcx" -> {
                 buf = data.asReadOnlyBuffer().order(ByteOrder.LITTLE_ENDIAN);
                 int size = buf.getInt();
                 int width = buf.getInt();
                 int height = buf.getInt();
                 if (width == 0 || height == 0) {
-                    return data.remaining() > 0 ? 16 : 17;
+                    yield data.remaining() > 0 ? 16 : 17;
                 }
-                return size == width * height ? 16 : 17;
-            case "def":
+                yield size == width * height ? 16 : 17;
+            }
+            case "def" -> {
                 if (data.remaining() < 4) {
-                    return 1;
+                    yield 1;
                 }
                 buf = data.asReadOnlyBuffer().order(ByteOrder.BIG_ENDIAN);
-                return buf.getInt();
-        }
-        throw new IllegalArgumentException("Unknown type for " + ext);
+                yield buf.getInt();
+            }
+            default -> throw new IllegalStateException("Unknown type for: " + ext);
+        };
     }
+
+    public static Path pathInLod(Path lod, String resourceName) {
+        return lod.resolveSibling(lod.getFileName() + "=@=@=" + resourceName);
+    }
+
+    public static Path pathOfLod(Path resource) {
+        String fileName = String.valueOf(resource.getFileName());
+        int lodSuffixIndex = fileName.indexOf("=@=@=");
+        if (lodSuffixIndex == -1) {
+            return null;
+        }
+        return resource.resolveSibling(fileName.substring(0, lodSuffixIndex));
+    }
+
+    public static String fileNamePossibleInLod(Path resource) {
+        String fileName = String.valueOf(resource.getFileName());
+        int lodSuffixIndex = fileName.indexOf("=@=@=");
+        if (lodSuffixIndex == -1) {
+            return fileName;
+        }
+        return fileName.substring(lodSuffixIndex + "=@=@=".length());
+    }
+
 }

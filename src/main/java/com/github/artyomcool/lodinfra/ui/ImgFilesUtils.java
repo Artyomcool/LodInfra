@@ -1,9 +1,9 @@
 package com.github.artyomcool.lodinfra.ui;
 
+import com.github.artyomcool.lodinfra.Resource;
+import com.github.artyomcool.lodinfra.h3common.Archive;
 import com.github.artyomcool.lodinfra.h3common.DefInfo;
 import com.github.artyomcool.lodinfra.h3common.LodFile;
-import javafx.scene.image.Image;
-import javafx.scene.image.WritableImage;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -56,16 +56,15 @@ public class ImgFilesUtils {
 
     public static <T> T processFile(Path file, T def, ImgFilesUtils.Processor<T> processor) {
         try {
-            String s = file.getFileName().toString();
-            if (s.contains("=@=@=")) {
-                Path p = file.resolveSibling(s.substring(0, s.indexOf("=@=@=")));
-                try (FileChannel channel = FileChannel.open(p)) {
+            Path lodPath = Resource.pathOfLod(file);
+            if (lodPath != null) {
+                try (FileChannel channel = FileChannel.open(lodPath)) {
                     MappedByteBuffer buffer = channel.map(FileChannel.MapMode.READ_ONLY, 0, channel.size());
                     buffer.order(ByteOrder.LITTLE_ENDIAN);
-                    LodFile lod = LodFile.parse(file, buffer);
-                    String name = s.substring(s.indexOf("=@=@=") + "=@=@=".length());
-                    for (LodFile.SubFileMeta subFile : lod.subFiles) {
-                        if (name.equals(subFile.nameAsString)) {
+                    Archive lod = LodFile.parse(lodPath, buffer);
+                    String name = Resource.fileNamePossibleInLod(file);
+                    for (Archive.Element subFile : lod.files()) {
+                        if (name.equals(subFile.name())) {
                             return processor.process(subFile.asByteBuffer());
                         }
                     }
