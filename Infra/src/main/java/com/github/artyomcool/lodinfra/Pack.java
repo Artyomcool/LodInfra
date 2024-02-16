@@ -1,8 +1,6 @@
 package com.github.artyomcool.lodinfra;
 
 import com.github.artyomcool.lodinfra.h3common.Archive;
-import com.github.artyomcool.lodinfra.h3common.Def;
-import com.github.artyomcool.lodinfra.h3common.DefInfo;
 import com.github.artyomcool.lodinfra.h3common.LodFile;
 import com.github.artyomcool.lodinfra.ui.DiffUi;
 import com.github.artyomcool.lodinfra.ui.Gui;
@@ -329,10 +327,45 @@ public class Pack {
             throw new UncheckedIOException(e);
         }
         applyArgs(args, cfg);
+        resolveReferences(cfg);
 
         DiffUi gui = new DiffUi(Path.of(leftDir), Path.of(rightDir), cfg, self.resolve(logs).resolve("sync"), nick);
 
         run(gui);
+    }
+
+    private static String resolveReferences(Properties cfg, String property) {
+        int substituteIndex;
+        int substitutionEnd = -1;
+
+        StringBuilder result = null;
+
+        while (true) {
+            substituteIndex = property.indexOf("${", substitutionEnd + 1);
+            if (substituteIndex == -1) {
+                if (result == null) {
+                    return property;
+                }
+                result.append(property, substitutionEnd + 1, property.length());
+                return result.toString();
+            }
+
+            substitutionEnd = property.indexOf("}", substituteIndex);
+            if (result == null) {
+                result = new StringBuilder();
+                result.append(property, 0, substituteIndex);
+            }
+            String p = cfg.getProperty(property.substring(substituteIndex + 2, substitutionEnd));
+            if (p != null) {
+                result.append(resolveReferences(cfg, p));
+            }
+        }
+    }
+
+    private static void resolveReferences(Properties cfg) {
+        for (Object key : cfg.keySet()) {
+            cfg.put(key, resolveReferences(cfg, cfg.getProperty((String) key)));
+        }
     }
 
 }

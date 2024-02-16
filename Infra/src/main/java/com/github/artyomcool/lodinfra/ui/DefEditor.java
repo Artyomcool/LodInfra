@@ -959,7 +959,7 @@ public class DefEditor extends StackPane {
                 }
                 if (h == -1) {
                     h = frame.fullHeight;
-                } else if (w != frame.fullHeight) {
+                } else if (h != frame.fullHeight) {
                     throw showError("Height inconsistent: " + frame.fullHeight + " has height " + h);
                 }
             }

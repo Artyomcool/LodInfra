@@ -23,12 +23,14 @@ public class LodFilePatch {
     private final Map<String, Resource> patchesByName = new TreeMap<>();
 
     private final ResourcePreprocessor preprocessor;
+    private final boolean isSnd;
 
     public static LodFilePatch fromPath(Path path, ResourcePreprocessor preprocessor) throws IOException {
         return new LodFilePatch(path, LodFile.loadOrCreate(path), preprocessor);
     }
 
     private LodFilePatch(Path lodPath, Archive file, ResourcePreprocessor preprocessor) {
+        this.isSnd = lodPath.toString().toLowerCase().endsWith(".snd");
         this.file = file;
         this.preprocessor = preprocessor;
         for (Archive.Element subFile : file.files()) {
@@ -180,6 +182,7 @@ public class LodFilePatch {
     }
 
     public ByteBuffer serialize() {
+        // isSnd
         List<Resource> resources = new ArrayList<>(patchesByName.values());
         originalResourcesByName.forEach((sanitizedName, resource) -> {
             if (removedByName.contains(sanitizedName) || patchesByName.containsKey(sanitizedName)) {

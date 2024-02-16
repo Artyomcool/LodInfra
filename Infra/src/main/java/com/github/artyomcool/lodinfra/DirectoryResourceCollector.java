@@ -242,6 +242,10 @@ public class DirectoryResourceCollector {
                         }
                     }
 
+                    if (lodPath.toString().toLowerCase().endsWith(".snd")) {
+                        continue;
+                    }
+
                     resource.setValue(resourcePreprocessor.compressed(resource.getValue()));
                 }
 

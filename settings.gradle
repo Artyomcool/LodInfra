@@ -1,4 +1,2 @@
 rootProject.name = 'LodInfra'
 include 'Infra'
-include 'Wrapper32'
-

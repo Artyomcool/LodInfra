@@ -105,6 +105,7 @@ public class DiffUi extends Application {
     public void stop() throws Exception {
         super.stop();
         watchService.close();
+        preview.stop();
     }
 
     record FileInfo(Path path, String name, FileTime lastModified, Long size, boolean isDirectory, boolean isFile) {

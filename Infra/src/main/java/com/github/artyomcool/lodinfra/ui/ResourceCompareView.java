@@ -20,6 +20,11 @@ public class ResourceCompareView extends StackPane {
         defPreview.start();
     }
 
+    public void stop() {
+        defPreview.stop();
+        soundCompareView.stop();
+    }
+
     public void show(Path local, Path remote) {
         if (soundCompareView.applySound(local, remote)) {
             return;

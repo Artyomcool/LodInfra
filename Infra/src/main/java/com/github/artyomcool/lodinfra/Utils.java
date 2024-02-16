@@ -13,8 +13,11 @@ public class Utils {
     static final Charset cp1251 = Charset.forName("cp1251");
 
     public static Path resolveTemplate(Path self, String pattern, String lang, String lod) {
+        if (!lod.contains(".")) {
+            lod = lod + ".lod";
+        }
         String path = pattern.replace("#lang#", lang).replace("#lod#", lod);
-        return self.resolve(path + ".lod");
+        return self.resolve(path);
     }
 
     public static void deleteDir(Path path) throws IOException {
