@@ -232,6 +232,9 @@ public class DirectoryResourceCollector {
 
                 for (Map.Entry<String, Resource> resource : entry.getValue().resourcesByName.entrySet()) {
                     String lowName = resource.getValue().name.toLowerCase();
+                    if (lowName.endsWith(".wav")) {
+                        lowName = lowName.substring(0, lowName.indexOf('.'));
+                    }
                     if (lowName.length() > 12) {
                         if (lowName.length() > 15) {
                             throw new RuntimeException("Resource lowName '" + lowName + "' is too long");

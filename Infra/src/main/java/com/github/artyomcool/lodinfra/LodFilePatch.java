@@ -2,6 +2,7 @@ package com.github.artyomcool.lodinfra;
 
 import com.github.artyomcool.lodinfra.h3common.Archive;
 import com.github.artyomcool.lodinfra.h3common.LodFile;
+import com.github.artyomcool.lodinfra.h3common.SndFile;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -63,7 +64,7 @@ public class LodFilePatch {
         patchesByName.put(resource.sanitizedName, resource);
     }
 
-    private byte[] nameBytes(String name) {
+    private byte[] nameBytes(String name, int size) {
         boolean invalidChar = name.chars().anyMatch(c -> !(
                 (c >= 'A' && c <= 'Z')
                         || (c >= 'a' && c <= 'z')
@@ -77,7 +78,7 @@ public class LodFilePatch {
         }
 
         byte[] bytes = name.getBytes(StandardCharsets.US_ASCII);
-        return Arrays.copyOf(bytes, 16);
+        return Arrays.copyOf(bytes, size);
     }
 
     public String calculateDiff() throws DataFormatException {
@@ -182,7 +183,6 @@ public class LodFilePatch {
     }
 
     public ByteBuffer serialize() {
-        // isSnd
         List<Resource> resources = new ArrayList<>(patchesByName.values());
         originalResourcesByName.forEach((sanitizedName, resource) -> {
             if (removedByName.contains(sanitizedName) || patchesByName.containsKey(sanitizedName)) {
@@ -192,41 +192,67 @@ public class LodFilePatch {
         });
         resources.sort(Comparator.comparing(r -> r.sanitizedName));
 
-        int headersSize = HEADER_SIZE + SUB_FILE_HEADER_SIZE * resources.size();
         int contentSize = resources.stream().mapToInt(r -> r.data.remaining()).sum();
 
-        byte[] result = new byte[headersSize + contentSize];
+        if (isSnd) {
+            int headerSize = 4;
+            int itemHeaderSize = 48;
+            int headersSize = headerSize + itemHeaderSize * resources.size();
 
-        int subFilesCount = resources.size();
+            byte[] result = new byte[headersSize + contentSize];
+            ByteBuffer byteBuffer = ByteBuffer.wrap(result).order(ByteOrder.LITTLE_ENDIAN);
+            byteBuffer.putInt(resources.size());
 
-        ByteBuffer byteBuffer = ByteBuffer.wrap(result).order(ByteOrder.LITTLE_ENDIAN);
-        file.writeHeader(byteBuffer, subFilesCount);
+            int offset = headersSize;
 
-        int offset = headersSize;
+            for (Resource resource : resources) {
+                byteBuffer.put(nameBytes(resource.name.substring(0, resource.name.indexOf('.')), 40));
+                byteBuffer.putInt(offset);
+                byteBuffer.putInt(resource.data.remaining());
+                offset += resource.data.remaining();
+            }
 
-        for (Resource resource : resources) {
-            int compressedSize = resource.uncompressedSize == 0
-                    ? 0
-                    : resource.data.remaining();
+            for (Resource resource : resources) {
+                byteBuffer.put(resource.data.asReadOnlyBuffer());
+            }
 
-            int uncompressedSize = resource.uncompressedSize == 0
-                    ? resource.data.remaining()
-                    : resource.uncompressedSize;
+            return byteBuffer.flip();
+        } else {
+            int headersSize = HEADER_SIZE + SUB_FILE_HEADER_SIZE * resources.size();
 
-            byteBuffer.put(nameBytes(resource.name));
-            byteBuffer.putInt(offset);
-            byteBuffer.putInt(uncompressedSize);
-            byteBuffer.putInt(resource.type);
-            byteBuffer.putInt(compressedSize);
+            byte[] result = new byte[headersSize + contentSize];
 
-            offset += resource.data.remaining();
+            int subFilesCount = resources.size();
+
+            ByteBuffer byteBuffer = ByteBuffer.wrap(result).order(ByteOrder.LITTLE_ENDIAN);
+            file.writeHeader(byteBuffer, subFilesCount);
+
+            int offset = headersSize;
+
+            for (Resource resource : resources) {
+                int compressedSize = resource.uncompressedSize == 0
+                        ? 0
+                        : resource.data.remaining();
+
+                int uncompressedSize = resource.uncompressedSize == 0
+                        ? resource.data.remaining()
+                        : resource.uncompressedSize;
+
+                byteBuffer.put(nameBytes(resource.name, 16));
+                byteBuffer.putInt(offset);
+                byteBuffer.putInt(uncompressedSize);
+                byteBuffer.putInt(resource.type);
+                byteBuffer.putInt(compressedSize);
+
+                offset += resource.data.remaining();
+            }
+
+            for (Resource resource : resources) {
+                byteBuffer.put(resource.data.asReadOnlyBuffer());
+            }
+
+            return byteBuffer.flip();
         }
-
-        for (Resource resource : resources) {
-            byteBuffer.put(resource.data.asReadOnlyBuffer());
-        }
-
-        return byteBuffer.flip();
     }
 
     private static int getLodHeaderSize() {
