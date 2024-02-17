@@ -5,13 +5,16 @@ import com.github.artyomcool.lodinfra.Resource;
 import com.github.artyomcool.lodinfra.Utils;
 import com.github.artyomcool.lodinfra.h3common.*;
 import com.jfoenix.controls.*;
+import com.sun.javafx.scene.control.ControlAcceleratorSupport;
 import javafx.application.Platform;
+import javafx.beans.value.ChangeListener;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.geometry.Insets;
 import javafx.geometry.Orientation;
 import javafx.geometry.Pos;
 import javafx.scene.Group;
+import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.control.skin.SeparatorSkin;
@@ -28,9 +31,12 @@ import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
 import javafx.scene.text.TextAlignment;
 import javafx.stage.FileChooser;
+import javafx.stage.Modality;
+import javafx.stage.Stage;
 
 import java.io.File;
 import java.io.IOException;
+import java.lang.reflect.Field;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.IntBuffer;
@@ -297,6 +303,40 @@ public class DefEditor extends StackPane {
         groupsAndFrames.setContextMenu(new ContextMenu(delete));
     }
 
+    public void showModal(Scene owner) {
+        Stage stage = new Stage();
+        Scene scene = new Scene(this);
+        scene.getStylesheets().add(getClass().getResource("/theme.css").toExternalForm());
+        stage.setScene(scene);
+        stage.setTitle("View & Edit");
+        stage.setWidth(1024);
+        stage.setHeight(800);
+        stage.initModality(Modality.WINDOW_MODAL);
+        stage.initOwner(owner.getWindow());
+        this.start();
+        stage.showAndWait();
+        Map<Object, ChangeListener<Scene>> listenerMap;
+        try {
+            //noinspection unchecked
+            Field declaredField = ControlAcceleratorSupport.class.getDeclaredField("sceneChangeListenerMap");
+            declaredField.setAccessible(true);
+            listenerMap = (Map<Object, ChangeListener<Scene>>) declaredField.get(null);
+        } catch (IllegalAccessException | NoSuchFieldException e) {
+            throw new RuntimeException(e);
+        }
+        for (Map.Entry<Object, ChangeListener<Scene>> entry : listenerMap.entrySet()) {
+            if (entry.getKey() instanceof Node) {
+                if (((Node) entry.getKey()).getScene() == scene) {
+                    entry.setValue((observable, oldValue, newValue) -> {
+                    });
+                }
+            }
+        }
+        stage.close();
+        scene.setRoot(new StackPane());
+        this.stop();
+    }
+
     public void setDef(DefInfo original, DefInfo.Frame frame) {
         DefInfo def = original.cloneBase();
         for (DefInfo.Group group : original.groups) {
@@ -419,6 +459,7 @@ public class DefEditor extends StackPane {
                                     buffer.clear();
 
                                     IntBuffer intBuf = buffer.asIntBuffer();
+                                    intBuf.put(frame.pixels.remaining());
                                     intBuf.put(frame.pixels.asReadOnlyBuffer());
                                     buffer.position(buffer.position() + intBuf.position() * 4);
                                     backup.write(buffer.flip());
@@ -431,6 +472,7 @@ public class DefEditor extends StackPane {
                     putString(buffer, "");
                     buffer.putInt(items.size());
                     for (HistoryItem item : items) {
+                        putString(buffer, item.def.path.toString());
                         putString(buffer, item.action);
                         buffer.putInt(item.def.type);
                         buffer.putInt(item.def.fullWidth);
@@ -474,12 +516,92 @@ public class DefEditor extends StackPane {
         });
     }
 
+    public void loadHistory(Path history) throws IOException {
+        Map<String, IntBuffer> frames = new HashMap<>();
+        ByteBuffer read = ByteBuffer.wrap(Files.readAllBytes(history));
+        while (true) {
+            String data = getString(read);
+            if (data == null || data.isEmpty()) {
+                break;
+            }
+
+            int size = read.getInt();
+            IntBuffer buffer = IntBuffer.allocate(size);
+            buffer.put(0, read.asIntBuffer(), 0, size);
+            read.position(read.position() + size * 4);
+
+            frames.put(data, buffer);
+        }
+
+        int itemsCount = read.getInt();
+        List<HistoryItem> historyItems = new ArrayList<>(itemsCount);
+        for (int c = 0; c < itemsCount; c++) {
+            String path = getString(read);
+            String action = getString(read);
+            DefInfo def = new DefInfo();
+            def.path = Path.of(path);
+            def.type = read.getInt();
+            def.fullWidth = read.getInt();
+            def.fullHeight = read.getInt();
+            int defPaletteSize = read.getInt();
+            int[] palette = defPaletteSize == 0 ? null : new int[defPaletteSize];
+            for (int i = 0; i < defPaletteSize; i++) {
+                palette[i] = read.getInt();
+            }
+            def.palette = palette;
+
+            int groupsSize = read.getInt();
+            for (int i = 0; i < groupsSize; i++) {
+                DefInfo.Group group = new DefInfo.Group(def);
+                group.groupIndex = read.getInt();
+                group.name = getString(read);
+                int framesCount = read.getInt();
+                for (int j = 0; j < framesCount; j++) {
+                    int fw = read.getInt();
+                    int fh = read.getInt();
+                    String name = getString(read);
+                    int compression = read.getInt();
+                    int frameDrawType = read.getInt();
+                    String sha = getString(read);
+                    DefInfo.Frame frame = new DefInfo.Frame(group, fw, fh, frames.get(sha), sha);
+                    frame.name = name;
+                    frame.compression = compression;
+                    frame.frameDrawType = frameDrawType;
+                    group.frames.add(frame);
+                }
+                def.groups.add(group);
+            }
+
+            historyItems.add(new HistoryItem(def, action));
+        }
+
+        this.history.getItems().setAll(historyItems);
+        this.history.getSelectionModel().select(0);
+
+        DefInfo def = this.history.getItems().get(0).def;
+        setDefInternal(def, def.first());
+    }
+
     private static void putString(ByteBuffer buffer, String data) {
         byte[] bytes = data == null ? null : data.getBytes(StandardCharsets.UTF_8);
         buffer.putInt(bytes == null ? -1 : bytes.length);
         if (bytes != null) {
             buffer.put(bytes);
         }
+    }
+
+    private static String getString(ByteBuffer buffer) {
+        int size = buffer.getInt();
+        if (size == -1) {
+            return null;
+        }
+        if (size == 0) {
+            return "";
+        }
+
+        byte[] data = new byte[size];
+        buffer.get(data);
+        return new String(data, StandardCharsets.UTF_8);
     }
 
     private void autoscroll() {

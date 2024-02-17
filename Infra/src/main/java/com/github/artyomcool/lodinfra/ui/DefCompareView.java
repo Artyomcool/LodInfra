@@ -177,38 +177,8 @@ public class DefCompareView extends VBox {
     public void expand() {
         DefEditor root = new DefEditor(restore);
         root.setDef(local.getDef(), local.getCurrentFrame());
-        Stage stage = new Stage();
-        Scene scene = new Scene(root);
-        scene.getStylesheets().add(getClass().getResource("/theme.css").toExternalForm());
-        stage.setScene(scene);
-        stage.setTitle("View & Edit");
-        stage.setWidth(1024);
-        stage.setHeight(800);
-        stage.initModality(Modality.WINDOW_MODAL);
-        stage.initOwner(getScene().getWindow());
-        root.start();
         animationSpeed.stop();
-        stage.showAndWait();
-        Map<Object, ChangeListener<Scene>> listenerMap;
-        try {
-            //noinspection unchecked
-            Field declaredField = ControlAcceleratorSupport.class.getDeclaredField("sceneChangeListenerMap");
-            declaredField.setAccessible(true);
-            listenerMap = (Map<Object, ChangeListener<Scene>>) declaredField.get(null);
-        } catch (IllegalAccessException | NoSuchFieldException e) {
-            throw new RuntimeException(e);
-        }
-        for (Map.Entry<Object, ChangeListener<Scene>> entry : listenerMap.entrySet()) {
-            if (entry.getKey() instanceof Node) {
-                if (((Node) entry.getKey()).getScene() == scene) {
-                    entry.setValue((observable, oldValue, newValue) -> {
-                    });
-                }
-            }
-        }
-        stage.close();
-        scene.setRoot(new StackPane());
-        root.stop();
+        root.showModal(getScene());
         animationSpeed.start();
     }
 

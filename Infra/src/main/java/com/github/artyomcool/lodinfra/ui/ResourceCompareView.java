@@ -10,8 +10,8 @@ public class ResourceCompareView extends StackPane {
     private final DefCompareView defPreview;
     private final SoundCompareView soundCompareView;
 
-    public ResourceCompareView(Properties cfg, Path localPath) {
-        defPreview = new DefCompareView(localPath.resolve("restore"));
+    public ResourceCompareView(Properties cfg, Path restorePath) {
+        defPreview = new DefCompareView(restorePath);
         soundCompareView = new SoundCompareView(cfg);
         getChildren().add(defPreview);
     }

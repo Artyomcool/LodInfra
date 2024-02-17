@@ -37,7 +37,6 @@ import org.controlsfx.control.SegmentedButton;
 
 import java.io.*;
 import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 import java.nio.channels.FileChannel;
 import java.nio.file.*;
 import java.nio.file.attribute.FileTime;
@@ -682,9 +681,8 @@ public class DiffUi extends Application {
 
             private TreeItem<Item> cachedGlobalRoot;
             private TreeItem<Item> itemTreeItem;
-            final Map<Item, ItemAction> observeActions = new HashMap<>();
-            private final JFXCheckBox checkBox = new JFXCheckBox("Autobuild");
-            final JFXTreeTableView<Item> inProgressList = createListComponent(true, false, observeActions);
+            final Map<Item, ItemAction> inProgress = new HashMap<>();
+            final JFXTreeTableView<Item> inProgressList = createListComponent(true, false, inProgress);
 
             @Override
             public void changed(ObservableValue<? extends Boolean> observable, Boolean oldValue, Boolean newValue) {
@@ -709,10 +707,6 @@ public class DiffUi extends Application {
                 itemTreeItem = DiffUi.this.filterForInProgress(localPath.resolve("restore"));
 
                 inProgressList.setRoot(itemTreeItem);
-
-                if (checkBox.isSelected()) {
-                    //rebuild();
-                }
             }
         });
 
@@ -984,13 +978,25 @@ public class DiffUi extends Application {
                 if (!empty) {
                     contextMenu.getItems().clear();
                     setOnMouseClicked(e -> {
-                        if (e.getClickCount() == 2 && e.isControlDown()) {
-                            try {
-                                Runtime.getRuntime().exec("explorer /select, " + item.local);
-                            } catch (IOException ex) {
-                                throw new RuntimeException(ex);
+                        if (e.getClickCount() == 2) {
+                            if (e.isControlDown()) {
+                                try {
+                                    Runtime.getRuntime().exec("explorer /select, " + item.local);
+                                } catch (IOException ex) {
+                                    throw new RuntimeException(ex);
+                                }
+                                e.consume();
+                            } else {
+                                if (item.local.isFile && item.local.name.endsWith(".history")) {
+                                    DefEditor root = new DefEditor(localPath.resolve("restore"));
+                                    try {
+                                        root.loadHistory(item.local.path);
+                                    } catch (IOException ex) {
+                                        throw new RuntimeException(ex);
+                                    }
+                                    root.showModal(getScene());
+                                }
                             }
-                            e.consume();
                         }
                     });
                     if (item.remote.lastModified != null) {

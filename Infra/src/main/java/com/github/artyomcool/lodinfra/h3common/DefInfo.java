@@ -226,11 +226,15 @@ public class DefInfo {
         public int frameDrawType = 0; // 0 - normal, 1 - lightening
 
         public Frame(Group group, int fullWidth, int fullHeight, IntBuffer pixels) {
+            this(group, fullWidth, fullHeight, pixels, sha256(pixels));
+        }
+
+        public Frame(Group group, int fullWidth, int fullHeight, IntBuffer pixels, String sha256) {
             this.group = group;
             this.fullWidth = fullWidth;
             this.fullHeight = fullHeight;
             this.pixels = pixels;
-            this.pixelsSha = sha256(pixels);
+            this.pixelsSha = sha256;
         }
 
         public Frame(Group group, Frame frame) {
