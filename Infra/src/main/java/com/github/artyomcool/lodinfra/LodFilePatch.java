@@ -206,7 +206,7 @@ public class LodFilePatch {
             int offset = headersSize;
 
             for (Resource resource : resources) {
-                byteBuffer.put(nameBytes(resource.name.substring(0, resource.name.indexOf('.')), 40));
+                byteBuffer.put(nameBytes(resource.name, 40));
                 byteBuffer.putInt(offset);
                 byteBuffer.putInt(resource.data.remaining());
                 offset += resource.data.remaining();

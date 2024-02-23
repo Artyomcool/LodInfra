@@ -163,6 +163,9 @@ public class DirectoryResourceCollector {
                     if (previouslyModifiedAt != null) {
                         Instant lastModifiedTime = Files.getLastModifiedTime(path).toInstant();
                         String resourceName = Resource.resourceName(path);
+                        if (resourceName.toLowerCase().endsWith(".wav")) {
+                            resourceName = resourceName.substring(0, resourceName.indexOf('.'));
+                        }
                         Instant previously = parseInstant(previouslyModifiedAt.get(lodName + "^" + resourceName));
                         currentResourcesTimestamps.put(lodName + "^" + resourceName, lastModifiedTime.toString());
                         if (lastModifiedTime.equals(previously)) {
@@ -232,9 +235,6 @@ public class DirectoryResourceCollector {
 
                 for (Map.Entry<String, Resource> resource : entry.getValue().resourcesByName.entrySet()) {
                     String lowName = resource.getValue().name.toLowerCase();
-                    if (lowName.endsWith(".wav")) {
-                        lowName = lowName.substring(0, lowName.indexOf('.'));
-                    }
                     if (lowName.length() > 12) {
                         if (lowName.length() > 15) {
                             throw new RuntimeException("Resource lowName '" + lowName + "' is too long");

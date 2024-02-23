@@ -22,7 +22,7 @@ public class Resource {
     public Resource(int type, String lang, String name, String sanitizedName, String virtualPath, ByteBuffer data, int uncompressedSize) {
         this.type = type;
         this.lang = lang;
-        this.name = name;
+        this.name = name.toLowerCase().endsWith(".wav") ? name.substring(0, name.lastIndexOf('.')) : name;
         this.sanitizedName = sanitizedName;
         this.virtualPath = virtualPath;
         this.data = data;
