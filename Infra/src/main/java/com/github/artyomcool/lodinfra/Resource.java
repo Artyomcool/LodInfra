@@ -23,7 +23,7 @@ public class Resource {
         this.type = type;
         this.lang = lang;
         this.name = name.toLowerCase().endsWith(".wav") ? name.substring(0, name.lastIndexOf('.')) : name;
-        this.sanitizedName = sanitizedName;
+        this.sanitizedName = sanitizedName.toLowerCase().endsWith(".wav") ? sanitizedName.substring(0, sanitizedName.lastIndexOf('.')) : sanitizedName;;
         this.virtualPath = virtualPath;
         this.data = data;
         this.uncompressedSize = uncompressedSize;
