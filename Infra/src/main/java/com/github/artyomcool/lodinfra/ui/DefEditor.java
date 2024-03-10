@@ -289,14 +289,16 @@ public class DefEditor extends StackPane {
 
         MenuItem delete = new MenuItem("Delete selected frames");
         delete.setOnAction(e -> {
-            boolean removed = false;
+            List<TreeItem<Object>> toRemove = new ArrayList<>();
             for (TreeItem<Object> item : groupsAndFrames.getSelectionModel().getSelectedItems()) {
                 if (item.getValue() instanceof DefInfo.Frame) {
-                    item.getParent().getChildren().remove(item);
-                    removed = true;
+                    toRemove.add(item);
                 }
             }
-            if (removed) {
+            if (!toRemove.isEmpty()) {
+                for (TreeItem<Object> item : toRemove) {
+                    item.getParent().getChildren().remove(item);
+                }
                 update("Deleted frames", false);
             }
         });

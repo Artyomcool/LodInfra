@@ -133,9 +133,10 @@ public class D32 extends DefInfo {
             totalFramesDataSize += f.packedFrame.box.width * f.packedFrame.box.height * 4;
         }
 
-        int framesHeaderSize = 40;
+        int frameHeaderSize = 32;
+        int frameInfoSize = 8;
 
-        int totalSize = totalSizeBeforeFrames + totalFrames * framesHeaderSize + totalFramesDataSize;
+        int totalSize = totalSizeBeforeFrames + totalFrames * (frameHeaderSize + frameInfoSize) + totalFramesDataSize;
         byte[] data = new byte[totalSize];
         ByteBuffer buffer = ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN);
         buffer
@@ -176,7 +177,6 @@ public class D32 extends DefInfo {
                     int backup = buffer.position();
                     buffer.position(framesOffset);
 
-                    int frameHeaderSize = 40;
                     int imageSize = info.packedFrame.box.width * info.packedFrame.box.height * 4;
 
                     int fw = info.packedFrame.frame.fullWidth;
@@ -187,7 +187,6 @@ public class D32 extends DefInfo {
                     int x = info.packedFrame.box.x;
                     int y = info.packedFrame.box.y;
 
-                    int frameInfoSize = 8;
                     int frameDrawType = info.packedFrame.frame.frameDrawType;
 
                     buffer
@@ -202,14 +201,13 @@ public class D32 extends DefInfo {
                             .putInt(frameInfoSize)
                             .putInt(frameDrawType);
 
-                    IntBuffer intBuffer = buffer.asIntBuffer();
                     for (int j = height - 1; j >= 0; j--) {
                         for (int i = 0; i < width; i++) {
                             buffer.putInt(ImgFilesUtils.pcxToD32Color(info.packedFrame.color(i, j)));
                         }
                     }
 
-                    framesOffset = buffer.position() + intBuffer.position() * 4;
+                    framesOffset = buffer.position();
                     buffer.position(backup);
                 } else {
                     buffer.putInt(info.offset);
