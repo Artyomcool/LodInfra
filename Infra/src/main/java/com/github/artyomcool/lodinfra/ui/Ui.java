@@ -1,8 +1,9 @@
 package com.github.artyomcool.lodinfra.ui;
 
 import com.jfoenix.controls.JFXButton;
-import javafx.event.ActionEvent;
-import javafx.event.EventHandler;
+import com.jfoenix.controls.JFXComboBox;
+import com.jfoenix.controls.JFXSlider;
+import javafx.collections.FXCollections;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
@@ -10,7 +11,7 @@ import javafx.scene.control.*;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
 
-import java.util.concurrent.Callable;
+import java.util.List;
 import java.util.function.Consumer;
 
 public class Ui {
@@ -58,8 +59,29 @@ public class Ui {
         return withAction(new Button(name), action);
     }
 
+    static <T> JFXComboBox<T> combo(List<T> objects, Consumer<? super T> listener) {
+        JFXComboBox<T> combo = new JFXComboBox<>();
+        combo.setItems(FXCollections.observableList(objects));
+        if (!objects.isEmpty()) {
+            combo.setValue(objects.get(0));
+        }
+        combo.valueProperty().addListener((observable, oldValue, newValue) -> listener.accept(newValue));
+        return combo;
+    }
+
+    static JFXSlider slider(int start, int step, int end, Consumer<? super Integer> listener) {
+        JFXSlider slider = new JFXSlider(start, end, (end - start) / 2.);
+        slider.blockIncrementProperty().setValue(step);
+        slider.valueProperty().addListener((observable, oldValue, newValue) -> listener.accept(newValue.intValue()));
+        return slider;
+    }
+
     static JFXButton jfxbutton(String name, Runnable action) {
         return withAction(new JFXButton(name), action);
+    }
+
+    static <T extends Region> T pad(T node) {
+        return pad(2, node);
     }
 
     static <T extends Region> T pad(int padding, T node) {
@@ -72,7 +94,7 @@ public class Ui {
         return node;
     }
 
-    private static <T extends Region> T bg(Color color, T node) {
+    static <T extends Region> T bg(Color color, T node) {
         node.setBackground(new Background(new BackgroundFill(color, null, null)));
         return node;
     }
@@ -81,14 +103,27 @@ public class Ui {
         return new VBox(new HBox(border(color, new StackPane(node))));
     }
 
+    static <T extends Node> T hide(T node) {
+        node.setVisible(false);
+        node.setManaged(false);
+        return node;
+    }
+
     static <T extends Node> T grow(T node) {
         VBox.setVgrow(node, Priority.ALWAYS);
         HBox.setHgrow(node, Priority.ALWAYS);
+        if (node instanceof Region) {
+            ((Region) node).setMaxWidth(Double.MAX_VALUE);
+            ((Region) node).setMaxHeight(Double.MAX_VALUE);
+        }
         return node;
     }
 
     static <T extends Node> T growH(T node) {
         HBox.setHgrow(node, Priority.ALWAYS);
+        if (node instanceof Region) {
+            ((Region) node).setMaxWidth(Double.MAX_VALUE);
+        }
         return node;
     }
 

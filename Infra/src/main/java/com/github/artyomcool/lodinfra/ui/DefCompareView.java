@@ -1,30 +1,19 @@
 package com.github.artyomcool.lodinfra.ui;
 
+import com.github.artyomcool.lodinfra.Icons;
 import com.github.artyomcool.lodinfra.h3common.DefInfo;
 import com.jfoenix.controls.JFXButton;
 import com.jfoenix.controls.JFXCheckBox;
 import com.jfoenix.controls.JFXSlider;
-import com.sun.javafx.scene.control.ControlAcceleratorSupport;
 import javafx.application.Platform;
-import javafx.beans.value.ChangeListener;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
-import javafx.scene.Group;
-import javafx.scene.Node;
-import javafx.scene.Scene;
 import javafx.scene.control.Label;
 import javafx.scene.layout.HBox;
-import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
-import javafx.scene.paint.Color;
-import javafx.scene.shape.SVGPath;
-import javafx.stage.Modality;
-import javafx.stage.Stage;
 
-import java.lang.reflect.Field;
 import java.nio.file.Path;
 import java.util.Arrays;
-import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
@@ -47,7 +36,7 @@ public class DefCompareView extends VBox {
     private final JFXCheckBox lockPreviews = new JFXCheckBox("Lock previews");
     private final AnimationSpeedField animationSpeed = new AnimationSpeedField(this::nextFrame);
 
-    private final JFXButton expand = new JFXButton(null, expandIcon());
+    private final JFXButton expand = new JFXButton(null, Icons.expandIcon());
     private final Path restore;
 
     {
@@ -204,16 +193,6 @@ public class DefCompareView extends VBox {
             }
         }
         return null;
-    }
-
-    private static Node expandIcon() {
-        String d = "M435.197,153.593h-115.2v25.6h102.4v307.2h-332.8v-307.2h102.4v-25.6h-115.2c-7.066,0-12.8,5.734-12.8,12.8v332.8 c0,7.066,5.734,12.8,12.8,12.8h358.4c7.066,0,12.8-5.734,12.8-12.8v-332.8C447.997,159.328,442.262,153.593,435.197,153.593z M341.74,78.782l-76.8-75.136c-5.043-4.941-13.158-4.847-18.099,0.205l-76.595,74.923 c-5.052,4.949-5.146,13.047-0.205,18.108c4.941,5.035,13.056,5.129,18.099,0.188l55.057-53.854v275.098 c0,7.074,5.734,12.8,12.8,12.8c7.066,0,12.8-5.717,12.8-12.8V43.215l55.049,53.854c5.043,4.949,13.158,4.855,18.099-0.188 C346.885,91.821,346.8,83.722,341.74,78.782z";
-        SVGPath path = new SVGPath();
-        path.setFill(Color.grayRgb(0x60));
-        path.setContent(d);
-        path.setScaleX(1d / 32);
-        path.setScaleY(1d / 32);
-        return new Group(path);
     }
 
 }

@@ -1,5 +1,6 @@
 package com.github.artyomcool.lodinfra.ui;
 
+import com.github.artyomcool.lodinfra.Icons;
 import com.github.artyomcool.lodinfra.Resource;
 import com.github.artyomcool.lodinfra.Utils;
 import com.github.artyomcool.lodinfra.h3common.Archive;
@@ -21,13 +22,11 @@ import javafx.event.Event;
 import javafx.event.EventHandler;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
-import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.input.ContextMenuEvent;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
-import javafx.scene.shape.SVGPath;
 import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
 import javafx.stage.DirectoryChooser;
@@ -202,7 +201,7 @@ public class DiffUi extends Application {
             pane.setPrefWidth(480);
             pane.setFitToWidth(true);
             SplitPane box = new SplitPane(lastFiles, pane);
-            box.setDividerPosition(0, 0.6);
+            box.setDividerPosition(0, 0);
             root.getChildren().add(box);
 
             scene = new Scene(root);
@@ -346,11 +345,13 @@ public class DiffUi extends Application {
 
     private VBox files(StackPane root) throws IOException {
         ToggleButton fetch = new ToggleButton("Fetch");
-        fetch.setGraphic(downloadIcon());
+        fetch.setGraphic(Icons.downloadIcon());
         ToggleButton observe = new ToggleButton("Observe");
+        observe.setGraphic(Icons.observe());
         ToggleButton inProgress = new ToggleButton("In Progress");
+        inProgress.setGraphic(Icons.inProgress());
         ToggleButton push = new ToggleButton("Push");
-        push.setGraphic(uploadIcon());
+        push.setGraphic(Icons.uploadIcon());
         SegmentedButton modes = new SegmentedButton(
                 fetch,
                 observe,
@@ -365,20 +366,15 @@ public class DiffUi extends Application {
 
         rootItem = loadTree();
 
-        HBox leftPanel = new HBox();
         HBox rightPanel = new HBox();
         HBox modesWrapper = new HBox(modes);
-        leftPanel.setAlignment(Pos.CENTER_LEFT);
         rightPanel.setAlignment(Pos.CENTER_RIGHT);
         modesWrapper.setAlignment(Pos.CENTER);
-        leftPanel.setSpacing(2);
         rightPanel.setSpacing(2);
-        leftPanel.setPadding(padding);
         rightPanel.setPadding(padding);
-        leftPanel.setMinWidth(120);
-        rightPanel.setMinWidth(120);
+        rightPanel.setMinWidth(140);
         modesWrapper.setPadding(padding);
-        HBox panelWrapper = new HBox(leftPanel, modesWrapper, rightPanel);
+        HBox panelWrapper = new HBox(modesWrapper, rightPanel);
         HBox.setHgrow(modesWrapper, Priority.ALWAYS);
         panelWrapper.setAlignment(Pos.CENTER);
 
@@ -407,7 +403,7 @@ public class DiffUi extends Application {
             final Map<Item, ItemAction> fetchActions = new HashMap<>();
             final JFXTreeTableView<Item> fetchList = createListComponent(false, false, fetchActions);
 
-            final Button fetchButton = new Button("Fetch selected", downloadIcon());
+            final Button fetchButton = new Button("Fetch", Icons.downloadIcon());
 
             {
                 fetchButton.setOnAction(a -> {
@@ -457,8 +453,7 @@ public class DiffUi extends Application {
                         executeCheckTreeItem(fetchActions, itemTreeItem, true, ItemAction.REMOTE_TO_LOCAL);
                     }
 
-                    leftPanel.getChildren().setAll(fetchButton);
-                    rightPanel.getChildren().clear();
+                    rightPanel.getChildren().setAll(fetchButton);
                     listWrapper.getChildren().setAll(fetchList);
 
                     onFilterChanged = s -> updateRoot();
@@ -493,7 +488,7 @@ public class DiffUi extends Application {
             final Map<Item, ItemAction> pushActions = new HashMap<>();
             final JFXTreeTableView<Item> pushList = createListComponent(false, true, pushActions);
 
-            final Button pushButton = new Button("Push selected", uploadIcon());
+            final Button pushButton = new Button("Push", Icons.uploadIcon());
             {
                 pushButton.setOnAction(a -> {
                     StringBuilder files = new StringBuilder();
@@ -564,7 +559,7 @@ public class DiffUi extends Application {
                 });
             }
 
-            final Button revertButton = new Button("Revert (!)", downloadIcon(Color.DARKRED));
+            final Button revertButton = new Button("Revert (!)", Icons.downloadIcon(Color.DARKRED));
             {
                 revertButton.setOnAction(a -> {
                     Alert alert = new Alert(Alert.AlertType.WARNING, "Revert all selected files to remote version?", ButtonType.NO, ButtonType.YES);
@@ -623,8 +618,7 @@ public class DiffUi extends Application {
                     if (cachedGlobalRoot != rootItem) {
                         updateRoot();
                     }
-                    leftPanel.getChildren().setAll(revertButton);
-                    rightPanel.getChildren().setAll(pushButton);
+                    rightPanel.getChildren().setAll(revertButton, pushButton);
                     listWrapper.getChildren().setAll(pushList);
 
                     onFilesChangedAction = treeItem -> {
@@ -648,7 +642,6 @@ public class DiffUi extends Application {
                     if (cachedGlobalRoot != rootItem) {
                         updateRoot();
                     }
-                    leftPanel.getChildren().clear();
                     rightPanel.getChildren().clear();
                     listWrapper.getChildren().setAll(observeList);
 
@@ -690,7 +683,6 @@ public class DiffUi extends Application {
                     if (cachedGlobalRoot != rootItem) {
                         updateRoot();
                     }
-                    leftPanel.getChildren().clear();
                     rightPanel.getChildren().clear();
                     listWrapper.getChildren().setAll(inProgressList);
 
@@ -1809,28 +1801,6 @@ public class DiffUi extends Application {
         NOTHING,
         LOCAL_TO_REMOTE,
         REMOTE_TO_LOCAL
-    }
-
-    private static Node downloadIcon() {
-        return downloadIcon(Color.CORNFLOWERBLUE);
-    }
-
-    private static Node downloadIcon(Color color) {
-        String d = "M8.05,15.15H1.31C.52,15.15.2,14.83.2,14v-2.7a.9.9,0,0,1,1-1H5.27a.57.57,0,0,1,.37.16c.36.34.71.71,1.06,1.06a1.82,1.82,0,0,0,2.68,0c.36-.36.71-.73,1.09-1.08a.61.61,0,0,1,.37-.15h4a.92.92,0,0,1,1,1v2.79a.9.9,0,0,1-1,1Zm3.62-2.4a.6.6,0,1,0,0,1.19.6.6,0,1,0,0-1.19Zm1.82.61a.58.58,0,0,0,.61.58.6.6,0,1,0-.61-.58ZM6.23,5.5v-4c0-.6.2-.79.8-.79H9.11c.53,0,.74.21.75.74,0,1.25,0,2.51,0,3.76,0,.26.07.34.33.33.66,0,1.32,0,2,0a.63.63,0,0,1,.66.39.61.61,0,0,1-.2.71l-4.1,4.09a.6.6,0,0,1-1,0L3.48,6.61a.61.61,0,0,1-.21-.73.63.63,0,0,1,.66-.38h2.3Z";
-        SVGPath path = new SVGPath();
-        path.setFill(color);
-        path.setStroke(null);
-        path.setContent(d);
-        return path;
-    }
-
-    private static Node uploadIcon() {
-        String d = "M16,9.64v.74a.54.54,0,0,0,0,.1,3.55,3.55,0,0,1-.46,1.35,3.68,3.68,0,0,1-3.35,1.89H3.37a3.49,3.49,0,0,1-1-.13A3.21,3.21,0,0,1,.07,10,3.13,3.13,0,0,1,1.51,7.78a.19.19,0,0,0,.1-.26,2,2,0,0,1,.1-1.43A2.2,2.2,0,0,1,4.3,4.82a.16.16,0,0,0,.22-.1,3.13,3.13,0,0,1,.19-.36A4.46,4.46,0,0,1,9.79,2.43a4.38,4.38,0,0,1,3.14,3.69c0,.16.1.2.23.24A3.63,3.63,0,0,1,15.8,8.79,5.85,5.85,0,0,1,16,9.64ZM7,9.18v1.94a.5.5,0,0,0,.55.56h.89A.5.5,0,0,0,9,11.12V9.36c0-.06,0-.11,0-.18h1a.48.48,0,0,0,.45-.29.49.49,0,0,0-.12-.53l-2-1.93a.49.49,0,0,0-.77,0l-2,1.93a.49.49,0,0,0-.12.53A.49.49,0,0,0,6,9.17H7Z";
-        SVGPath path = new SVGPath();
-        path.setFill(Color.GOLDENROD);
-        path.setStroke(null);
-        path.setContent(d);
-        return path;
     }
 
 }

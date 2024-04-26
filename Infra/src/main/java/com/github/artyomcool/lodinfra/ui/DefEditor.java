@@ -175,6 +175,9 @@ public class DefEditor extends StackPane {
         });
     }
 
+    private final JFXSlider slider;
+    private final JFXComboBox<Filter> filter;
+
     private TreeCell<Object> dropZone;
 
     {
@@ -256,7 +259,9 @@ public class DefEditor extends StackPane {
                                         groupButtons(
                                                 button("Calculate", this::calculatePalette),
                                                 button("Drop", this::dropPalette)
-                                        )
+                                        ),
+                                        pad(4, line(growH(filter = combo(Arrays.asList(Filter.values()), this::filterChanged)))),
+                                        hide(pad(4, slider = slider(0, 10, 100, this::filterSliderChanged)))
                                 )
                         ),
                         grow(border(Color.LIGHTGRAY, width(220, history)))
@@ -736,6 +741,153 @@ public class DefEditor extends StackPane {
         update("Palette", palette, Function.identity());
     }
 
+    private void filterChanged(Filter filter) {
+        slider.setVisible(filter != Filter.None);
+        slider.setManaged(filter != Filter.None);
+        filterSliderChanged((int) slider.getValue());
+    }
+
+    private void filterSliderChanged(int percent) {
+        if (percent == 0) {
+            preview.setTransformation(Function.identity());
+            return;
+        }
+
+        Filter value = filter.getValue();
+        preview.setTransformation(image -> {
+            int width = (int) image.getWidth();
+            int height = (int) image.getHeight();
+            WritableImage result = new WritableImage(width, height);
+            int[] scanline = new int[(int) result.getWidth()];
+            for (int y = 0; y < height; y++) {
+                WritablePixelFormat<IntBuffer> format = PixelFormat.getIntArgbInstance();
+                image.getPixelReader().getPixels(0, y, width, 1, format, scanline, 0, width);
+                a:
+                for (int src = 0; src < width; src++) {
+                    int color = scanline[src];
+                    for (int specColor : Def.SPEC_COLORS) {
+                        if (color == specColor) {
+                            continue a;
+                        }
+                    }
+                    scanline[src] = applyFilter(color, value, percent / 100f);
+                }
+                result.getPixelWriter().setPixels(0, y, scanline.length, 1, format, scanline, 0, scanline.length);
+            }
+            return result;
+        });
+    }
+
+    private int applyFilter(int color, Filter filter, float fraction) {
+        return switch (filter) {
+            case None -> color;
+            case Red -> changeColor(color, 0, fraction, 1 + fraction, 1 + fraction);
+            case Gray -> changeColor(color, 0, 0, 1 - fraction, 1);
+            case Blue -> changeColor(color, 0.67f, fraction, 1 + fraction, 1 + fraction);
+        };
+    }
+
+    private int changeColor(int color, float hueTarget, float hueStrength, float saturation, float value) {
+        int b = color & 0xFF;
+        int g = (color >> 8) & 0xFF;
+        int r = (color >> 16) & 0xFF;
+
+        int max = Math.max(r, Math.max(g, b));
+        int min = Math.min(r, Math.min(g, b));
+
+        float h = 0;
+        float s = 0;
+        float v = max / 255f;
+        int c = max - min;
+
+        if (max != min) {
+            s = c / (float) max;
+            if (r == max) {
+                h = (g - b) / (float) c;
+            } else if (g == max) {
+                h = (b - r) / (float) c + 2;
+            } else {
+                h = (r - g) / (float) c + 4;
+            }
+        }
+
+        h /= 6;
+
+        if (h < 0) {
+            h += 1;
+        }
+
+        if (Math.abs(hueTarget - h) > 0.5f) {
+            if (hueTarget > h) {
+                h += 1;
+            } else {
+                hueTarget += 1;
+            }
+        }
+
+        h += (hueTarget - h) * hueStrength;
+        if (h >= 1) {
+            h -= 1;
+        }
+
+        if (saturation > 1) {
+            s = 1.0f - (1.0f - s) / saturation;
+        } else {
+            s = s * saturation;
+        }
+
+        if (value > 1) {
+            v = 1.0f - (1.0f - v) / value;
+        } else {
+            v = v * value;
+        }
+
+        int brightness = (int) (v * 255);
+        if (s == 0) {
+            r = g = b = brightness;
+        } else {
+            h *= 6;
+            float f = h - (int) h;
+            int p = (int) (255 * v * (1 - s));
+            int q = (int) (255 * v * (1 - s * f));
+            int t = (int) (255 * v * (1 - s * (1 - f)));
+            switch ((int) h) {
+                case 0 -> {
+                    r = brightness;
+                    g = t;
+                    b = p;
+                }
+                case 1 -> {
+                    r = q;
+                    g = brightness;
+                    b = p;
+                }
+                case 2 -> {
+                    r = p;
+                    g = brightness;
+                    b = t;
+                }
+                case 3 -> {
+                    r = p;
+                    g = q;
+                    b = brightness;
+                }
+                case 4 -> {
+                    r = t;
+                    g = p;
+                    b = brightness;
+                }
+                case 5 -> {
+                    r = brightness;
+                    g = p;
+                    b = q;
+                }
+            }
+        }
+
+        return (0xff000000 & color) | (r << 16) | (g << 8) | b;
+    }
+
     private void dropPalette() {
         update("Drop palette", null, Function.identity());
     }
@@ -1179,7 +1331,8 @@ public class DefEditor extends StackPane {
         for (DefInfo.Group group : def.groups) {
             for (DefInfo.Frame frame : group.frames) {
                 for (int y = 0; y < frame.fullHeight; y++) {
-                    a: for (int x = 0; x < frame.fullWidth; x++) {
+                    a:
+                    for (int x = 0; x < frame.fullWidth; x++) {
                         int cm = frame.colorMul(x, y);
                         if (cm == DefInfo.SPEC_COLORS[0]) {
                             continue;
@@ -1312,6 +1465,18 @@ public class DefEditor extends StackPane {
         @Override
         public String toString() {
             return action;
+        }
+    }
+
+    enum Filter {
+        None,
+        Red,
+        Gray,
+        Blue;
+
+        @Override
+        public String toString() {
+            return "Filter " + name();
         }
     }
 
