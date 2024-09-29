@@ -2,13 +2,22 @@ package com.github.artyomcool.lodinfra;
 
 import com.github.artyomcool.lodinfra.h3common.Archive;
 import com.github.artyomcool.lodinfra.h3common.LodFile;
-import com.github.artyomcool.lodinfra.h3common.SndFile;
 
+import javax.crypto.BadPaddingException;
+import javax.crypto.Cipher;
+import javax.crypto.IllegalBlockSizeException;
+import javax.crypto.NoSuchPaddingException;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.security.InvalidKeyException;
+import java.security.KeyFactory;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.security.spec.InvalidKeySpecException;
+import java.security.spec.X509EncodedKeySpec;
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.zip.DataFormatException;
@@ -25,14 +34,16 @@ public class LodFilePatch {
 
     private final ResourcePreprocessor preprocessor;
     private final boolean isSnd;
+    private final RsaKey key;
 
-    public static LodFilePatch fromPath(Path path, ResourcePreprocessor preprocessor) throws IOException {
-        return new LodFilePatch(path, LodFile.loadOrCreate(path), preprocessor);
+    public static LodFilePatch fromPath(Path path, ResourcePreprocessor preprocessor, RsaKey key) throws IOException {
+        return new LodFilePatch(path, LodFile.loadOrCreate(path), preprocessor, key);
     }
 
-    private LodFilePatch(Path lodPath, Archive file, ResourcePreprocessor preprocessor) {
+    private LodFilePatch(Path lodPath, Archive file, ResourcePreprocessor preprocessor, RsaKey key) {
         this.isSnd = lodPath.toString().toLowerCase().endsWith(".snd");
         this.file = file;
+        this.key = key;
         this.preprocessor = preprocessor;
         for (Archive.Element subFile : file.files()) {
             Resource resource = Resource.fromLod(lodPath, subFile);
@@ -220,12 +231,14 @@ public class LodFilePatch {
         } else {
             int headersSize = HEADER_SIZE + SUB_FILE_HEADER_SIZE * resources.size();
 
-            byte[] result = new byte[headersSize + contentSize];
+            int fullContentSize = headersSize + contentSize;
+            int keySize = key == null ? 0 : (4 + key.key().length);
+            byte[] result = new byte[fullContentSize + keySize];
 
             int subFilesCount = resources.size();
 
             ByteBuffer byteBuffer = ByteBuffer.wrap(result).order(ByteOrder.LITTLE_ENDIAN);
-            file.writeHeader(byteBuffer, subFilesCount);
+            file.writeHeader(byteBuffer, subFilesCount, key != null);
 
             int offset = headersSize;
 
@@ -251,7 +264,31 @@ public class LodFilePatch {
                 byteBuffer.put(resource.data.asReadOnlyBuffer());
             }
 
+            if (key != null) {
+                byte[] encryptedSignature = getEncryptedSignature(result, fullContentSize);
+                byteBuffer.putInt(key.id());
+                byteBuffer.put(encryptedSignature);
+            }
+
             return byteBuffer.flip();
+        }
+    }
+
+    private byte[] getEncryptedSignature(byte[] result, int fullContentSize) {
+        try {
+            MessageDigest md = MessageDigest.getInstance("SHA3-512");
+            md.update(result, 0, fullContentSize);
+            byte[] digest = md.digest();
+
+            KeyFactory keyFactory = KeyFactory.getInstance("RSA");
+            // no requirement for padding, since the message size is fixed and well known
+            Cipher encryptCipher = Cipher.getInstance("RSA");
+            encryptCipher.init(Cipher.ENCRYPT_MODE, keyFactory.generatePrivate(new X509EncodedKeySpec(key.key())));
+
+            return encryptCipher.doFinal(digest);
+        } catch (NoSuchAlgorithmException | IllegalBlockSizeException | InvalidKeyException | BadPaddingException |
+                 InvalidKeySpecException | NoSuchPaddingException e) {
+            throw new RuntimeException(e);
         }
     }
 

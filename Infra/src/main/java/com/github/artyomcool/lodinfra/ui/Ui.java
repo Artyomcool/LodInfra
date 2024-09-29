@@ -15,7 +15,7 @@ import java.util.List;
 import java.util.function.Consumer;
 
 public class Ui {
-    static RuntimeException showError(String error) {
+    public static RuntimeException showError(String error) {
         Alert alert = new Alert(Alert.AlertType.ERROR);
         alert.setTitle("Error");
         alert.setContentText(error);
@@ -23,7 +23,7 @@ public class Ui {
         return new RuntimeException(error);
     }
 
-    static MenuItem menuItem(String title, Action action) {
+    public static MenuItem menuItem(String title, Action action) {
         MenuItem menuItem = new MenuItem(title);
         menuItem.setOnAction(actionEvent -> {
             try {
@@ -36,7 +36,7 @@ public class Ui {
         return menuItem;
     }
 
-    static Pane groupButtons(Control... nodes) {
+    public static Pane groupButtons(Control... nodes) {
         HBox result = new HBox(2, nodes) {
             @Override
             protected void layoutChildren() {
@@ -50,16 +50,20 @@ public class Ui {
         return result;
     }
 
-    private static <T extends ButtonBase> T withAction(T button, Runnable action) {
+    public static <T extends ButtonBase> T withAction(T button, Runnable action) {
         button.setOnAction(a -> action.run());
         return button;
     }
 
-    static Button button(String name, Runnable action) {
-        return withAction(new Button(name), action);
+    public static Button button(String name) {
+        return new Button(name);
     }
 
-    static <T> JFXComboBox<T> combo(List<T> objects, Consumer<? super T> listener) {
+    public static Button button(String name, Runnable action) {
+        return withAction(button(name), action);
+    }
+
+    public static <T> JFXComboBox<T> combo(List<T> objects, Consumer<? super T> listener) {
         JFXComboBox<T> combo = new JFXComboBox<>();
         combo.setItems(FXCollections.observableList(objects));
         if (!objects.isEmpty()) {
@@ -69,47 +73,47 @@ public class Ui {
         return combo;
     }
 
-    static JFXSlider slider(int start, int step, int end, Consumer<? super Integer> listener) {
+    public static JFXSlider slider(int start, int step, int end, Consumer<? super Integer> listener) {
         JFXSlider slider = new JFXSlider(start, end, (end - start) / 2.);
         slider.blockIncrementProperty().setValue(step);
         slider.valueProperty().addListener((observable, oldValue, newValue) -> listener.accept(newValue.intValue()));
         return slider;
     }
 
-    static JFXButton jfxbutton(String name, Runnable action) {
+    public static JFXButton jfxbutton(String name, Runnable action) {
         return withAction(new JFXButton(name), action);
     }
 
-    static <T extends Region> T pad(T node) {
+    public static <T extends Region> T pad(T node) {
         return pad(2, node);
     }
 
-    static <T extends Region> T pad(int padding, T node) {
+    public static <T extends Region> T pad(int padding, T node) {
         node.setPadding(new Insets(padding));
         return node;
     }
 
-    static <T extends Region> T border(Color color, T node) {
+    public static <T extends Region> T border(Color color, T node) {
         node.setBorder(new Border(new BorderStroke(color, BorderStrokeStyle.SOLID, null, BorderStroke.THIN)));
         return node;
     }
 
-    static <T extends Region> T bg(Color color, T node) {
+    public static <T extends Region> T bg(Color color, T node) {
         node.setBackground(new Background(new BackgroundFill(color, null, null)));
         return node;
     }
 
-    static Node border(Color color, Node node) {
+    public static Node border(Color color, Node node) {
         return new VBox(new HBox(border(color, new StackPane(node))));
     }
 
-    static <T extends Node> T hide(T node) {
+    public static <T extends Node> T hide(T node) {
         node.setVisible(false);
         node.setManaged(false);
         return node;
     }
 
-    static <T extends Node> T grow(T node) {
+    public static <T extends Node> T grow(T node) {
         VBox.setVgrow(node, Priority.ALWAYS);
         HBox.setHgrow(node, Priority.ALWAYS);
         if (node instanceof Region) {
@@ -119,7 +123,7 @@ public class Ui {
         return node;
     }
 
-    static <T extends Node> T growH(T node) {
+    public static <T extends Node> T growH(T node) {
         HBox.setHgrow(node, Priority.ALWAYS);
         if (node instanceof Region) {
             ((Region) node).setMaxWidth(Double.MAX_VALUE);
@@ -127,34 +131,65 @@ public class Ui {
         return node;
     }
 
-    static HBox line(Node... nodes) {
+    public static <T extends Node> T growV(T node) {
+        VBox.setVgrow(node, Priority.ALWAYS);
+        if (node instanceof Region) {
+            ((Region) node).setMaxHeight(Double.MAX_VALUE);
+        }
+        return node;
+    }
+
+    public static HBox line(Node... nodes) {
         return line(2, nodes);
     }
 
-    static HBox line(int padding, Node... nodes) {
+    public static HBox line(int padding, Node... nodes) {
         return line(padding, 8, nodes);
     }
 
-    static HBox line(int padding, int spacing, Node... nodes) {
+    public static HBox line(int padding, int spacing, Node... nodes) {
         HBox box = pad(padding, new HBox(spacing, nodes));
         box.setAlignment(Pos.CENTER_LEFT);
         return box;
     }
 
-    static <T extends Region> T width(int w, T node) {
+    public static VBox column(Node... nodes) {
+        return column(2, nodes);
+    }
+
+    public static VBox column(int padding, Node... nodes) {
+        return column(padding, 8, nodes);
+    }
+
+    public static VBox column(int padding, int spacing, Node... nodes) {
+        return pad(padding, new VBox(spacing, nodes));
+    }
+
+    public static <T extends Region> T width(int w, T node) {
         node.setPrefWidth(w);
         return node;
     }
 
-    static <T extends Region> T height(int h, T node) {
+    public static <T extends Region> T height(int h, T node) {
         node.setPrefHeight(h);
         return node;
     }
 
-    static Pane withLabel(Node pane, String label) {
-        Pane result = new VBox(new Label(label), pane);
-        result.setPadding(new Insets(4));
+    public static Node withLabel(Node pane, String label) {
+        if (label == null) {
+            return pane;
+        }
+        Label l = new Label(label);
+        Pane result = new VBox(l, pane);
+        result.setPadding(new Insets(2));
+        if (pane instanceof Region r) {
+            r.minWidthProperty().bind(l.widthProperty());
+        }
         return result;
+    }
+
+    public static TextField textField(String defaultValue) {
+        return new TextField(defaultValue);
     }
 
     public static interface Action {

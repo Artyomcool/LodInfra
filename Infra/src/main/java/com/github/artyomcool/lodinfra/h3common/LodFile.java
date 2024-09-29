@@ -3,6 +3,7 @@ package com.github.artyomcool.lodinfra.h3common;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -95,11 +96,15 @@ public class LodFile implements Archive {
     }
 
     @Override
-    public void writeHeader(ByteBuffer byteBuffer, int subFilesCount) {
+    public void writeHeader(ByteBuffer byteBuffer, int subFilesCount, boolean signed) {
         byteBuffer.putInt(magic);
         byteBuffer.putInt(fileUseFlag);
         byteBuffer.putInt(subFilesCount);
-        byteBuffer.put(junk);
+
+        String lodType = signed ? "signed" : "unsigned";
+        byte[] type = ("type:" + lodType).getBytes(StandardCharsets.UTF_8);
+        byteBuffer.put(type);
+        byteBuffer.put(junk, type.length, junk.length - type.length);
     }
 
     public static LodFile createEmpty(Path path) {

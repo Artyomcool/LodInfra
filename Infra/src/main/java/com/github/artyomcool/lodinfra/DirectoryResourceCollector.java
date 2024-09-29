@@ -13,12 +13,14 @@ import java.time.LocalDate;
 import java.util.*;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import java.util.zip.DataFormatException;
 
 public class DirectoryResourceCollector {
 
     public final Path dir;
     public final String pathPattern;
+    public final RsaKey key;
 
     public String logPath = "logs";
     public String resPath = ".";
@@ -30,9 +32,10 @@ public class DirectoryResourceCollector {
     public Set<String> allowedLangs = new HashSet<>();
     public Set<String> dontWarnAboutNames = new HashSet<>();
 
-    public DirectoryResourceCollector(Path dir, String pathPattern) {
+    public DirectoryResourceCollector(Path dir, String pathPattern, RsaKey key) {
         this.dir = dir;
         this.pathPattern = pathPattern;
+        this.key = key;
     }
 
     public void collectResources() throws IOException, DataFormatException {
@@ -40,7 +43,10 @@ public class DirectoryResourceCollector {
         Map<String, List<Path>> xlsFilesByLodName = new HashMap<>();
         Map<String, List<Path>> resourcesByLangLodName = new HashMap<>();
 
-        List<Path> files = Files.list(dir.resolve(resPath)).toList();
+        List<Path> files;
+        try (Stream<Path> dirStream = Files.list(dir.resolve(resPath))) {
+            files = dirStream.toList();
+        }
         for (Path path : files) {
             String name = path.getFileName().toString();
             if (Files.isDirectory(path)) {
@@ -253,7 +259,7 @@ public class DirectoryResourceCollector {
                 }
 
                 System.out.println("Write " + lodPath);
-                LodFilePatch lodFilePatch = LodFilePatch.fromPath(lodPath, resourcePreprocessor);
+                LodFilePatch lodFilePatch = LodFilePatch.fromPath(lodPath, resourcePreprocessor, key);
                 if (previouslyModifiedAt == null) {
                     lodFilePatch.removeAllFromOriginal();
                 } else {
@@ -284,7 +290,9 @@ public class DirectoryResourceCollector {
                             StandardOpenOption.WRITE,
                             StandardOpenOption.TRUNCATE_EXISTING
                     )) {
-                        channel.write(newLod);
+                        while (newLod.hasRemaining()) {
+                            channel.write(newLod);
+                        }
                         channel.force(true);
                     }
                 }

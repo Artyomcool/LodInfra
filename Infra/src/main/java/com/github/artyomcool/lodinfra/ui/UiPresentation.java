@@ -695,7 +695,6 @@ public class UiPresentation {
         if ("tiny".equals(field.option) || "tinyNoWrap".equals(field.option)) {
             StackPane pane = new StackPane();
             pane.getStyleClass().add("bordered-titled-border");
-            pane.setPadding(padding);
 
             Pane content = "tiny".equals(field.option) ? new FlowPane() : new HBox();
             for (Field f : field.fields) {

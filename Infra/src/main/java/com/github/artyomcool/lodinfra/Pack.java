@@ -1,5 +1,6 @@
 package com.github.artyomcool.lodinfra;
 
+import com.github.artyomcool.lodinfra.dateditor.grammar.GrammarParser;
 import com.github.artyomcool.lodinfra.h3common.Archive;
 import com.github.artyomcool.lodinfra.h3common.LodFile;
 import com.github.artyomcool.lodinfra.ui.DiffUi;
@@ -9,6 +10,7 @@ import javafx.application.Platform;
 import javafx.stage.Stage;
 
 import java.io.*;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
@@ -22,32 +24,11 @@ public class Pack {
     private static final String VERSION = "1.5";
     public static Application APP = null;
 
-    public static void main(String[] a) throws IOException {
-        /*if (true) {
-            String lod = "......./h3sprite.lod";
-            LodFile file = LodFile.load(Path.of(lod));
-            Map<Integer, Map<Integer, Set<String>>> typesToCompressions = new HashMap<>();
-            for (LodFile.SubFileMeta subFile : file.subFiles) {
-                if (subFile.nameAsString.endsWith(".def")) {
-                    try {
-                        DefInfo info = Def.load(subFile.asByteBuffer());
-                        Map<Integer, Set<String>> typesToCompression = typesToCompressions.computeIfAbsent(info.type, k -> new HashMap<>());
-                        for (DefInfo.Group group : info.groups) {
-                            for (DefInfo.Frame frame : group.frames) {
-                                typesToCompression.computeIfAbsent(frame.compression, k -> new HashSet<>()).add(frame.fullWidth + "x" + frame.fullHeight);
-                            }
-                        }
-                    } catch (Exception e) {
-                        System.err.println(subFile.nameAsString);
-                        e.printStackTrace();
-                    }
-                }
-            }
-            for (var entry : typesToCompressions.entrySet()) {
-                System.out.println("0x" + Integer.toHexString(entry.getKey()) + " -> " + entry.getValue());
-            }
+    public static void main(String[] a) throws Exception {
+        if (true) {
+            GrammarParser.main(a);
             return;
-        }*/
+        }
         System.out.println("Version: " + VERSION);
         try {
             String selfPath = ".";
@@ -92,7 +73,7 @@ public class Pack {
         run(gui);
     }
 
-    private static void run(Application gui) throws InterruptedException {
+    public static void run(Application gui) throws InterruptedException {
         APP = gui;
         System.setProperty("prism.lcdtext", "false");
         System.setProperty("prism.subpixeltext", "false");
@@ -121,8 +102,12 @@ public class Pack {
         Properties properties = getArguments(self, args);
 
         String pathPattern = properties.getProperty("outputPattern");
+        String keyBase64 = properties.getProperty("rsaPrivateKey");
+        int keyId = Integer.parseInt(properties.getProperty("keyId", "-1"));
 
-        DirectoryResourceCollector collector = new DirectoryResourceCollector(self, pathPattern);
+        RsaKey key = keyId == -1 ? null : new RsaKey(keyId, Base64.getDecoder().decode(keyBase64));
+
+        DirectoryResourceCollector collector = new DirectoryResourceCollector(self, pathPattern, key);
         collector.logPath = properties.getProperty("logsPath", "logs");
         collector.resPath = properties.getProperty("resPath", ".");
         collector.dry = Boolean.parseBoolean(properties.getProperty("dryRun", "false"));

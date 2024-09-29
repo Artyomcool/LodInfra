@@ -8,7 +8,7 @@ public interface Archive {
 
     Path originalPath();
     List<? extends Element> files();
-    void writeHeader(ByteBuffer byteBuffer, int subFilesCount);
+    void writeHeader(ByteBuffer byteBuffer, int subFilesCount, boolean signed);
 
     interface Element {
         Archive parent();

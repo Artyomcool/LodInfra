@@ -25,7 +25,7 @@ public class SndFile implements Archive {
     }
 
     @Override
-    public void writeHeader(ByteBuffer byteBuffer, int subFilesCount) {
+    public void writeHeader(ByteBuffer byteBuffer, int subFilesCount, boolean signed) {
         byteBuffer.putInt(subFilesCount);
     }
 
