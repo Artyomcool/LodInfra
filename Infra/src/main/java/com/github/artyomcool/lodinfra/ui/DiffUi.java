@@ -458,22 +458,18 @@ public class DiffUi extends Application {
                         if (item.isSynthetic || item.remote.isDirectory) {
                             continue;
                         }
-                        if (item.remote.lastModified == null) {
-                            try {
-                                Files.delete(item.local.path);
-                            } catch (IOException exception) {
-                                exception.printStackTrace();
-                            }
-                            continue;
-                        }
                         try {
-                            Files.createDirectories(item.local.path.getParent());
-                            Files.copy(
-                                    item.remote.path,
-                                    item.local.path,
-                                    StandardCopyOption.REPLACE_EXISTING,
-                                    StandardCopyOption.COPY_ATTRIBUTES
-                            );
+                            if (item.remote.lastModified == null) {
+                                Files.delete(item.local.path);
+                            } else {
+                                Files.createDirectories(item.local.path.getParent());
+                                Files.copy(
+                                        item.remote.path,
+                                        item.local.path,
+                                        StandardCopyOption.REPLACE_EXISTING,
+                                        StandardCopyOption.COPY_ATTRIBUTES
+                                );
+                            }
                         } catch (IOException exception) {
                             exception.printStackTrace();
                         }
@@ -557,7 +553,7 @@ public class DiffUi extends Application {
                         }
 
                         Item item = entry.getKey();
-                        if (item.isSynthetic || !item.local.isFile) {
+                        if (item.isSynthetic || item.local.isDirectory) {
                             continue;
                         }
 
@@ -576,18 +572,22 @@ public class DiffUi extends Application {
                         }
 
                         Item item = entry.getKey();
-                        if (item.isSynthetic || !item.local.isFile) {
+                        if (item.isSynthetic || item.local.isDirectory) {
                             continue;
                         }
 
                         try {
-                            Files.createDirectories(item.remote.path.getParent());
-                            Files.copy(
-                                    item.local.path,
-                                    item.remote.path,
-                                    StandardCopyOption.REPLACE_EXISTING,
-                                    StandardCopyOption.COPY_ATTRIBUTES
-                            );
+                            if (item.local.lastModified == null) {
+                                Files.delete(item.remote.path);
+                            } else {
+                                Files.createDirectories(item.remote.path.getParent());
+                                Files.copy(
+                                        item.local.path,
+                                        item.remote.path,
+                                        StandardCopyOption.REPLACE_EXISTING,
+                                        StandardCopyOption.COPY_ATTRIBUTES
+                                );
+                            }
                         } catch (IOException exception) {
                             exception.printStackTrace();
 
@@ -1742,6 +1742,9 @@ public class DiffUi extends Application {
             parent.getChildren().add(item);
             expandedTree.put(path, item);
         }
+
+        maybeRemovedLocal.values().removeIf(value -> !Files.exists(remotePath.resolve(value.relativePath)));
+        maybeRemovedRemote.values().removeIf(value -> !Files.exists(localPath.resolve(value.relativePath)));
 
         Set<LastTs> nowSync = new HashSet<>();
         nowSync.addAll(maybeRemovedLocal.values());
