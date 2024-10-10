@@ -19,7 +19,7 @@ import java.util.zip.DataFormatException;
 
 public class Pack {
 
-    private static final String VERSION = "1.5";
+    private static final String VERSION = "1.6";
     public static Application APP = null;
 
     public static void main(String[] a) throws IOException {
