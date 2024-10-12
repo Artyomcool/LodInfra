@@ -143,6 +143,8 @@ public class DiffUi extends Application {
 
     record LastTs(String relativePath, long ts, boolean local) {
 
+        public static final LastTs NONE = new LastTs(null, 0, false);
+
         public String toLine() {
             return relativePath + ";" + ts + ";" + local;
         }
@@ -172,22 +174,23 @@ public class DiffUi extends Application {
             this.remote = remote;
             this.isSynthetic = isSynthetic;
 
-            status = status(null, null);
+            status = status(local.lastModified == null ? 0 : local.lastModified.toMillis(),
+                    remote.lastModified == null ? 0 : remote.lastModified.toMillis());
         }
 
-        Item(FileInfo local, FileInfo remote, LastTs removedLocal, LastTs removedRemote) {
+        Item(FileInfo local, FileInfo remote, long prevLocal, long prevRemote) {
             this.local = local;
             this.remote = remote;
             this.isSynthetic = false;
 
-            status = status(removedLocal, removedRemote);
+            status = status(prevLocal, prevRemote);
         }
 
         public Item foldInto(Item value) {
             return new Item(local.foldInto(value.local), remote.foldInto(value.remote));
         }
 
-        private ItemStatus status(LastTs removedLocal, LastTs removedRemote) {
+        private ItemStatus status(long prevLocal, long prevRemote) {
             if (local.isDirectory != remote.isDirectory) {
                 if (local.lastModified == null) {
                     return ItemStatus.REMOTE_NEWER;
@@ -204,28 +207,58 @@ public class DiffUi extends Application {
                 return ItemStatus.SAME;
             }
 
-            if (removedLocal != null) {
-                if (compare(FileTime.fromMillis(removedLocal.ts), remote.lastModified) != 0) {
-                    return ItemStatus.CONFLICT;
+            if (local.lastModified == null) {   // no local
+                if (prevLocal == 0) {
+                    return ItemStatus.REMOTE_NEWER; // never had local, has remote
                 }
+
+                // removed local
+                if (compare(FileTime.fromMillis(prevLocal), remote.lastModified) == 0) {
+                    return ItemStatus.LOCAL_NEWER;  // removed local only
+                }
+                return ItemStatus.CONFLICT; // removed local and changed remote
+            }
+
+            if (remote.lastModified == null) {   // no remote
+                if (prevRemote == 0) {
+                    return ItemStatus.LOCAL_NEWER; // never had remote, has local
+                }
+
+                // removed remote
+                if (compare(local.lastModified, FileTime.fromMillis(prevRemote)) == 0) {
+                    return ItemStatus.REMOTE_NEWER;  // removed remote only
+                }
+                return ItemStatus.CONFLICT; // removed remote and changed local
+            }
+
+            boolean localChanged = compare(local.lastModified, FileTime.fromMillis(prevLocal)) != 0;
+            boolean remoteChanged = compare(remote.lastModified, FileTime.fromMillis(prevRemote)) != 0;
+
+            if (localChanged && remoteChanged) {
+                // both changed
+                return ItemStatus.CONFLICT;
+            }
+
+            if (!localChanged && !remoteChanged) {
+                // should not happen, but can be in case of software update
+                return compare > 0 ? ItemStatus.LOCAL_NEWER : ItemStatus.REMOTE_NEWER;
+            }
+
+            if (localChanged) {
                 return ItemStatus.LOCAL_NEWER;
             }
-
-            if (removedRemote != null) {
-                if (compare(local.lastModified, FileTime.fromMillis(removedRemote.ts)) != 0) {
-                    return ItemStatus.CONFLICT;
-                }
-                return ItemStatus.REMOTE_NEWER;
-            }
-
-            return compare > 0 ? ItemStatus.LOCAL_NEWER : ItemStatus.REMOTE_NEWER;
+            return ItemStatus.REMOTE_NEWER;
         }
+    }
 
-        private int compare(FileTime o1, FileTime o2) {
-            long t1 = o1 == null ? 0 : o1.toMillis() / 1000;
-            long t2 = o2 == null ? 0 : o2.toMillis() / 1000;
-            return Long.compare(t1, t2);
-        }
+    private static int compare(FileTime o1, FileTime o2) {
+        long t1 = o1 == null ? 0 : o1.toMillis();
+        long t2 = o2 == null ? 0 : o2.toMillis();
+        return compare(t1, t2);
+    }
+
+    private static int compare(long t1, long t2) {
+        return Long.compare(t1 / 1000, t2 / 1000);
     }
 
     @Override
@@ -1676,19 +1709,20 @@ public class DiffUi extends Application {
 
 
         Path lastSyncTs = localPath.resolve("lastSyncTs");
-        Map<Path, LastTs> maybeRemovedLocal = new HashMap<>();
-        Map<Path, LastTs> maybeRemovedRemote = new HashMap<>();
+        boolean hasFile = Files.exists(lastSyncTs);
+        Map<Path, LastTs> prevLocalTs = new HashMap<>();
+        Map<Path, LastTs> prevRemoteTs = new HashMap<>();
         Set<LastTs> prevSync = new HashSet<>();
         try (var lines = Files.lines(lastSyncTs)) {
             lines.map(LastTs::fromLine).forEach(f -> {
-                (f.local ? maybeRemovedLocal : maybeRemovedRemote).put(Path.of(f.relativePath), f);
+                (f.local ? prevLocalTs : prevRemoteTs).put(Path.of(f.relativePath), f);
                 prevSync.add(f);
             });
         } catch (NoSuchFileException ignored) {
         }
 
         Map<Path, TreeItem<Item>> expandedTree = new HashMap<>();
-        List<LastTs> nowExists = new ArrayList<>();
+        List<LastTs> updated = new ArrayList<>();
 
         for (Path path : allPaths) {
             if (path.getFileName().toString().isEmpty()) {
@@ -1701,9 +1735,6 @@ public class DiffUi extends Application {
 
             boolean localExists = Files.exists(local);
             boolean remoteExists = Files.exists(remote);
-
-            LastTs removedLocal = localExists ? null : maybeRemovedLocal.get(path);
-            LastTs removedRemote = remoteExists ? null : maybeRemovedRemote.get(path);
 
             boolean localIsDirectory = Files.isDirectory(local);
             boolean remoteIsDirectory = Files.isDirectory(remote);
@@ -1727,29 +1758,35 @@ public class DiffUi extends Application {
                     false
             );
 
-            if (localExists) {
-                maybeRemovedLocal.remove(path);
-                nowExists.add(new LastTs(path.toString(), localFile.lastModified == null ? 0 : localFile.lastModified.toMillis(), true));
-            }
+            long localTs = localFile.lastModified == null ? 0 : localFile.lastModified.toMillis();
+            long remoteTs = remoteFile.lastModified == null ? 0 : remoteFile.lastModified.toMillis();
 
-            if (remoteExists) {
-                maybeRemovedRemote.remove(path);
-                nowExists.add(new LastTs(path.toString(), remoteFile.lastModified == null ? 0 : remoteFile.lastModified.toMillis(), false));
+            long prevLocal = hasFile ? prevLocalTs.getOrDefault(path, LastTs.NONE).ts : localTs;
+            long prevRemote = hasFile ? prevRemoteTs.getOrDefault(path, LastTs.NONE).ts : remoteTs;
+
+            boolean remoteAndLocalSame = compare(localTs, remoteTs) == 0;
+
+            if (remoteAndLocalSame) {
+                prevLocalTs.remove(path);
+                prevRemoteTs.remove(path);
+                updated.add(new LastTs(path.toString(), localTs, true));
+                updated.add(new LastTs(path.toString(), remoteTs, false));
             }
 
             TreeItem<Item> parent = path.getParent() == null ? rootItem : expandedTree.get(path.getParent());
-            TreeItem<Item> item = new TreeItem<>(new Item(localFile, remoteFile, removedLocal, removedRemote));
+            TreeItem<Item> item = new TreeItem<>(new Item(localFile, remoteFile, prevLocal, prevRemote));
             parent.getChildren().add(item);
             expandedTree.put(path, item);
         }
 
-        maybeRemovedLocal.values().removeIf(value -> !Files.exists(remotePath.resolve(value.relativePath)));
-        maybeRemovedRemote.values().removeIf(value -> !Files.exists(localPath.resolve(value.relativePath)));
+        // fixme now != prev
+        prevLocalTs.values().removeIf(value -> !Files.exists(remotePath.resolve(value.relativePath)));
+        prevRemoteTs.values().removeIf(value -> !Files.exists(localPath.resolve(value.relativePath)));
 
         Set<LastTs> nowSync = new HashSet<>();
-        nowSync.addAll(maybeRemovedLocal.values());
-        nowSync.addAll(maybeRemovedRemote.values());
-        nowSync.addAll(nowExists);
+        nowSync.addAll(prevLocalTs.values());
+        nowSync.addAll(prevRemoteTs.values());
+        nowSync.addAll(updated);
         if (!prevSync.equals(nowSync)) {
             Files.write(lastSyncTs, nowSync.stream().map(LastTs::toLine).toList());
         }
