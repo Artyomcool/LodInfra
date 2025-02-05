@@ -1384,6 +1384,9 @@ public class DefEditor extends StackPane {
                 }
             }
         }
+        if (frame != null) {
+            return frame;
+        }
         throw showError("There should be exactly one frame");
     }
 

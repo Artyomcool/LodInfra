@@ -2,7 +2,6 @@ package com.github.artyomcool.lodinfra;
 
 import com.github.artyomcool.lodinfra.h3common.Archive;
 import com.github.artyomcool.lodinfra.h3common.LodFile;
-import com.github.artyomcool.lodinfra.h3common.SndFile;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -24,14 +23,15 @@ public class LodFilePatch {
     private final Map<String, Resource> patchesByName = new TreeMap<>();
 
     private final ResourcePreprocessor preprocessor;
-    private final boolean isSnd;
+
+    private final LodType type;
 
     public static LodFilePatch fromPath(Path path, ResourcePreprocessor preprocessor) throws IOException {
         return new LodFilePatch(path, LodFile.loadOrCreate(path), preprocessor);
     }
 
     private LodFilePatch(Path lodPath, Archive file, ResourcePreprocessor preprocessor) {
-        this.isSnd = lodPath.toString().toLowerCase().endsWith(".snd");
+        this.type = LodType.forPath(lodPath);
         this.file = file;
         this.preprocessor = preprocessor;
         for (Archive.Element subFile : file.files()) {
@@ -194,30 +194,7 @@ public class LodFilePatch {
 
         int contentSize = resources.stream().mapToInt(r -> r.data.remaining()).sum();
 
-        if (isSnd) {
-            int headerSize = 4;
-            int itemHeaderSize = 48;
-            int headersSize = headerSize + itemHeaderSize * resources.size();
-
-            byte[] result = new byte[headersSize + contentSize];
-            ByteBuffer byteBuffer = ByteBuffer.wrap(result).order(ByteOrder.LITTLE_ENDIAN);
-            byteBuffer.putInt(resources.size());
-
-            int offset = headersSize;
-
-            for (Resource resource : resources) {
-                byteBuffer.put(nameBytes(resource.name, 40));
-                byteBuffer.putInt(offset);
-                byteBuffer.putInt(resource.data.remaining());
-                offset += resource.data.remaining();
-            }
-
-            for (Resource resource : resources) {
-                byteBuffer.put(resource.data.asReadOnlyBuffer());
-            }
-
-            return byteBuffer.flip();
-        } else {
+        if (type == LodType.LOD) {
             int headersSize = HEADER_SIZE + SUB_FILE_HEADER_SIZE * resources.size();
 
             byte[] result = new byte[headersSize + contentSize];
@@ -244,6 +221,31 @@ public class LodFilePatch {
                 byteBuffer.putInt(resource.type);
                 byteBuffer.putInt(compressedSize);
 
+                offset += resource.data.remaining();
+            }
+
+            for (Resource resource : resources) {
+                byteBuffer.put(resource.data.asReadOnlyBuffer());
+            }
+
+            return byteBuffer.flip();
+        } else {
+            int headerSize = 4;
+            int itemHeaderSize = type == LodType.SND ? 48 : 44;
+            int headersSize = headerSize + itemHeaderSize * resources.size();
+
+            byte[] result = new byte[headersSize + contentSize];
+            ByteBuffer byteBuffer = ByteBuffer.wrap(result).order(ByteOrder.LITTLE_ENDIAN);
+            byteBuffer.putInt(resources.size());
+
+            int offset = headersSize;
+
+            for (Resource resource : resources) {
+                byteBuffer.put(nameBytes(resource.name, 40));
+                byteBuffer.putInt(offset);
+                if (type == LodType.SND) {
+                    byteBuffer.putInt(resource.data.remaining());
+                }
                 offset += resource.data.remaining();
             }
 

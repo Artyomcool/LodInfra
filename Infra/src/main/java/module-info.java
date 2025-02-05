@@ -6,6 +6,7 @@ module LodInfra {
     requires jdk.localedata;
     requires java.prefs;
     requires pngj;
+    requires poi;
 
     opens com.github.artyomcool.lodinfra;
     opens com.github.artyomcool.lodinfra.data;

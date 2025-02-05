@@ -19,35 +19,10 @@ import java.util.zip.DataFormatException;
 
 public class Pack {
 
-    private static final String VERSION = "1.8";
+    private static final String VERSION = "1.9";
     public static Application APP = null;
 
     public static void main(String[] a) throws IOException {
-        /*if (true) {
-            String lod = "......./h3sprite.lod";
-            LodFile file = LodFile.load(Path.of(lod));
-            Map<Integer, Map<Integer, Set<String>>> typesToCompressions = new HashMap<>();
-            for (LodFile.SubFileMeta subFile : file.subFiles) {
-                if (subFile.nameAsString.endsWith(".def")) {
-                    try {
-                        DefInfo info = Def.load(subFile.asByteBuffer());
-                        Map<Integer, Set<String>> typesToCompression = typesToCompressions.computeIfAbsent(info.type, k -> new HashMap<>());
-                        for (DefInfo.Group group : info.groups) {
-                            for (DefInfo.Frame frame : group.frames) {
-                                typesToCompression.computeIfAbsent(frame.compression, k -> new HashSet<>()).add(frame.fullWidth + "x" + frame.fullHeight);
-                            }
-                        }
-                    } catch (Exception e) {
-                        System.err.println(subFile.nameAsString);
-                        e.printStackTrace();
-                    }
-                }
-            }
-            for (var entry : typesToCompressions.entrySet()) {
-                System.out.println("0x" + Integer.toHexString(entry.getKey()) + " -> " + entry.getValue());
-            }
-            return;
-        }*/
         System.out.println("Version: " + VERSION);
         try {
             String selfPath = ".";

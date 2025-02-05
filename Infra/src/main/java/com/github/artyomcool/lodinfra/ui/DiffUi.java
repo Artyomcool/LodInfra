@@ -1,6 +1,7 @@
 package com.github.artyomcool.lodinfra.ui;
 
 import com.github.artyomcool.lodinfra.Icons;
+import com.github.artyomcool.lodinfra.LodType;
 import com.github.artyomcool.lodinfra.Resource;
 import com.github.artyomcool.lodinfra.Utils;
 import com.github.artyomcool.lodinfra.h3common.Archive;
@@ -1834,8 +1835,7 @@ public class DiffUi extends Application {
                 TreeItem<Item> item = new TreeItem<>(new Item(file, file));
 
                 if (localExists && !localIsDirectory) {
-                    String itemName = p.getFileName().toString().toLowerCase();
-                    if (itemName.endsWith(".lod") || itemName.endsWith(".snd")) {
+                    if (LodType.forPath(p) != null) {
                         expandLod(item);
                     }
                 }

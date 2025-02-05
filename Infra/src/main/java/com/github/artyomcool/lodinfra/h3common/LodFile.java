@@ -1,5 +1,7 @@
 package com.github.artyomcool.lodinfra.h3common;
 
+import com.github.artyomcool.lodinfra.LodType;
+
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -121,8 +123,14 @@ public class LodFile implements Archive {
     }
 
     public static Archive parse(Path lodPath, ByteBuffer byteBuffer) throws IOException {
-        if (lodPath.getFileName().toString().toLowerCase().endsWith(".snd")) {
-            return SndFile.parse(lodPath, byteBuffer);
+        LodType type = LodType.forPath(lodPath);
+        switch (type) {
+            case SND -> {
+                return SndFile.parse(lodPath, byteBuffer);
+            }
+            case VID -> {
+                return VidFile.parse(lodPath, byteBuffer);
+            }
         }
         if (!byteBuffer.hasRemaining()) {
             return createEmpty(lodPath);

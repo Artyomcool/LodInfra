@@ -94,7 +94,7 @@ public class Resource {
     private static int typeOf(String ext, ByteBuffer data) {
         ByteBuffer buf;
         return switch (ext.toLowerCase()) {
-            case "h3c", "xmi", "ifr", "p32", "d32", "wav" -> 1;
+            case "h3c", "xmi", "ifr", "p32", "d32", "wav", "bik" -> 1;
             case "txt" -> 2;
             case "fnt" -> 80;
             case "msk" -> 79;
