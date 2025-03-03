@@ -376,9 +376,15 @@ public class DiffUi extends Application {
             if (item.getValue().local.isFile) {
                 Path lod = Resource.pathOfLod(item.getValue().local.path);
                 if (lod != null) {
-                    if (lod.getFileName().toString().toLowerCase().endsWith(".snd")) {
-                        exportSnd(item.getValue().local.path, output);
-                        return;
+                    switch (LodType.forPath(lod.getFileName())) {
+                        case SND -> {
+                            exportSnd(item.getValue().local.path, output);
+                            return;
+                        }
+                        case VID -> {
+                            exportVid(item.getValue().local.path, output);
+                            return;
+                        }
                     }
                 }
                 DefInfo defInfo = DefInfo.load(item.getValue().local.path);
@@ -411,6 +417,17 @@ public class DiffUi extends Application {
     private void exportSnd(Path path, Path output) {
         ImgFilesUtils.processFile(path, null, buffer -> {
             try (FileOutputStream stream = new FileOutputStream(output.resolve(Resource.fileNamePossibleInLod(path) + ".wav").toFile())) {
+                try (FileChannel fc = stream.getChannel()) {
+                    fc.write(buffer);
+                }
+            }
+            return null;
+        });
+    }
+
+    private void exportVid(Path path, Path output) {
+        ImgFilesUtils.processFile(path, null, buffer -> {
+            try (FileOutputStream stream = new FileOutputStream(output.resolve(Resource.fileNamePossibleInLod(path)).toFile())) {
                 try (FileChannel fc = stream.getChannel()) {
                     fc.write(buffer);
                 }

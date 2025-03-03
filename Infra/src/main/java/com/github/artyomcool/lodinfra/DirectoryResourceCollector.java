@@ -234,22 +234,20 @@ public class DirectoryResourceCollector {
                 System.out.println("Preprocess resources");
 
                 for (Map.Entry<String, Resource> resource : entry.getValue().resourcesByName.entrySet()) {
-                    String lowName = resource.getValue().name.toLowerCase();
-                    if (lowName.length() > 12) {
-                        if (lowName.length() > 15) {
-                            throw new RuntimeException("Resource lowName '" + lowName + "' is too long");
-                        } else {
-                            if (!dontWarnAboutNames.contains(lowName)) {
-                                System.out.println("NOTE: Resource lowName '" + lowName + "' is longer then 12 chars, game treats it as '" + lowName.substring(0, 12) + "'");
+                    LodType lodType = LodType.forPath(lodPath);
+                    if (lodType == LodType.LOD || lodType == null) {
+                        String lowName = resource.getValue().name.toLowerCase();
+                        if (lowName.length() > 12) {
+                            if (lowName.length() > 15) {
+                                throw new RuntimeException("Resource lowName '" + lowName + "' is too long");
+                            } else {
+                                if (!dontWarnAboutNames.contains(lowName)) {
+                                    System.out.println("NOTE: Resource lowName '" + lowName + "' is longer then 12 chars, game treats it as '" + lowName.substring(0, 12) + "'");
+                                }
                             }
                         }
+                        resource.setValue(resourcePreprocessor.compressed(resource.getValue()));
                     }
-
-                    if (lodPath.toString().toLowerCase().endsWith(".snd")) {
-                        continue;
-                    }
-
-                    resource.setValue(resourcePreprocessor.compressed(resource.getValue()));
                 }
 
                 System.out.println("Write " + lodPath);

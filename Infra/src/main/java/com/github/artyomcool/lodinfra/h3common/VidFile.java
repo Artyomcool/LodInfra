@@ -14,14 +14,12 @@ public class VidFile extends MediaFile {
     }
 
     @Override
-    protected void postReadFile(ByteBuffer byteBuffer, int amountReadSoFar) {
-        int lastOffset = amountReadSoFar;
-        for (int i = files.size() - 1; i >= 0; i--) {
+    protected void postReadFile(ByteBuffer byteBuffer, int limit) {
+        for (int i = 0; i < files.size(); i++) {
             SubFileMeta subFileMeta = files.get(i);
             int offset = subFileMeta.offset;
-            subFileMeta.size = lastOffset - offset;
-
-            lastOffset = offset;
+            int nextOffset = i == files.size() - 1 ? limit : files.get(i + 1).offset;
+            subFileMeta.size = nextOffset - offset;
         }
     }
 }

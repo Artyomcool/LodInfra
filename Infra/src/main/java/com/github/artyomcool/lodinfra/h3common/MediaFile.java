@@ -39,13 +39,13 @@ public class MediaFile implements Archive {
         path = lodPath;
         this.files = files;
 
-        postReadFile(byteBuffer, byteBuffer.position() - start);
+        postReadFile(byteBuffer, byteBuffer.limit());
     }
 
     protected void postReadFubFile(SubFileMeta subFile, ByteBuffer byteBuffer) {
     }
 
-    protected void postReadFile(ByteBuffer byteBuffer, int amountReadSoFar) {
+    protected void postReadFile(ByteBuffer byteBuffer, int limit) {
     }
 
     @Override
