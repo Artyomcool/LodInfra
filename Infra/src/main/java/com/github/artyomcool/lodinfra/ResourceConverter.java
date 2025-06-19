@@ -2,6 +2,8 @@ package com.github.artyomcool.lodinfra;
 
 import ar.com.hjg.pngj.*;
 import ar.com.hjg.pngj.chunks.PngChunkPLTE;
+import com.github.artyomcool.lodinfra.h3common.P32;
+import com.github.artyomcool.lodinfra.h3common.Png;
 
 import java.io.*;
 import java.nio.ByteBuffer;
@@ -11,6 +13,11 @@ public class ResourceConverter {
 
     public static ByteBuffer fromPng(String name, ByteBuffer buffer) {
         buffer = buffer.asReadOnlyBuffer();
+
+        if (name.toLowerCase().endsWith(".p32.png")) {
+            return P32.pack(Png.load(buffer).first());
+        }
+
         byte[] data = new byte[buffer.remaining()];
         buffer.get(data);
         PngReader pngReader = new PngReader(new ByteArrayInputStream(data));
@@ -26,7 +33,7 @@ public class ResourceConverter {
         }
 
         if (pngReader.imgInfo.alpha) {
-            throw new IllegalStateException(name + " alpha channel is not supported");
+            throw new IllegalStateException(name + " alpha channel is supported only for p32");
         }
 
         try {
