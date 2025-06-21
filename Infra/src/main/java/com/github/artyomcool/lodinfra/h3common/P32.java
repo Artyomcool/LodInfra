@@ -49,12 +49,12 @@ public class P32 extends Def {
         int type = TYPE;
         int version = 0;
         int headerSize = 32;
-        int fileSize = 40 + frame.fullWidth * frame.fullHeight;
-        int imageOffset = 40;
-        int imageSize = frame.fullWidth * frame.fullHeight;
-
         int width = frame.fullWidth;
         int height = frame.fullHeight;
+        int imageSize = width * height * 4;
+        int fileSize = 40 + imageSize;
+        int imageOffset = 40;
+
 
         ByteBuffer buffer = ByteBuffer.allocate(fileSize).order(ByteOrder.LITTLE_ENDIAN);
         buffer
