@@ -6,6 +6,9 @@ import com.github.artyomcool.lodinfra.h3common.DefInfo;
 import com.github.artyomcool.lodinfra.h3common.LodFile;
 
 import java.io.IOException;
+import java.lang.ref.Cleaner;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.MappedByteBuffer;
@@ -15,6 +18,20 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 
 public class ImgFilesUtils {
+
+    private static final Method unmapperMethod;
+
+    static {
+        try {
+            Class<?> cl = Class.forName("java.nio.MappedByteBuffer");
+            unmapperMethod = cl.getDeclaredMethod("unmapper");
+            unmapperMethod.setAccessible(true);
+        } catch (Throwable e) {
+            e.printStackTrace();
+            throw new RuntimeException(e);
+        }
+    }
+
 
     public static void premultiply(int[] array) {
         for (int i = 0; i < array.length; i++) {
@@ -71,10 +88,23 @@ public class ImgFilesUtils {
                     return def;
                 }
             } else {
+                MappedByteBuffer buffer = null;
                 try (FileChannel channel = FileChannel.open(file, StandardOpenOption.READ, StandardOpenOption.WRITE)) {
-                    MappedByteBuffer buffer = channel.map(FileChannel.MapMode.READ_WRITE, 0, channel.size());
+                    buffer = channel.map(FileChannel.MapMode.READ_WRITE, 0, channel.size());
                     buffer.order(ByteOrder.LITTLE_ENDIAN);
                     return processor.process(channel, buffer);
+                } finally {
+                    if (buffer != null) {
+                        try {
+                            Object unmapper = unmapperMethod.invoke(buffer);
+                            Method unmap = unmapper.getClass().getDeclaredMethod("unmap");
+                            unmap.setAccessible(true);
+                            unmap.invoke(unmapper);
+                        } catch (IllegalAccessException | InvocationTargetException | NoSuchMethodException e) {
+                            e.printStackTrace();
+                            throw new RuntimeException(e);
+                        }
+                    }
                 }
             }
         } catch (NoSuchFileException e) {

@@ -99,7 +99,9 @@ def opens = [
         '--add-opens',
         'javafx.graphics/com.sun.javafx.stage=com.jfoenix',
         '--add-opens',
-        'org.controlsfx.controls/impl.org.controlsfx.skin=LodInfra'
+        'org.controlsfx.controls/impl.org.controlsfx.skin=LodInfra',
+        '--add-opens',
+        'java.base/java.nio=LodInfra'
 ]
 
 application {
