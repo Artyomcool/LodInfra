@@ -1315,7 +1315,6 @@ public class DefEditor extends StackPane {
         setDef(load, load.first());
 
         try {
-            Files.deleteIfExists(def.path);
             Files.write(def.path, packed.array());
         } catch (IOException e) {
             throw new RuntimeException(e);
