@@ -130,7 +130,6 @@ public class Context {
                 int t = Integer.parseInt(p);
                 List<?> lst = (List<?>) d;
                 d = lst.get(t);
-                break;
             }
         }
         boolean changed = false;
